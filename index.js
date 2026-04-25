@@ -14,6 +14,19 @@ const app = express();
 const swaggerPath = path.join(__dirname, "docs", "swagger.yaml");
 const swaggerDocument = YAML.load(swaggerPath);
 
+// =====================================================================
+// TAMBAHAN: Otomatis membaca server tempat deploy
+// =====================================================================
+// Swagger akan menggunakan SERVER_URL dari variabel environment jika ada, 
+// atau fallback ke "/" (yang artinya otomatis mengikuti domain saat ini).
+swaggerDocument.servers = [
+  {
+    url: process.env.SERVER_URL || "/",
+    description: "Current Deployment Server"
+  }
+];
+// =====================================================================
+
 app.use(cors());
 app.use(express.json({ limit: "5mb" }));
 
@@ -28,9 +41,12 @@ app.get("/", (_req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/spk", spkRoutes);
 app.use("/api", masterRoutes);
+
 app.get("/api/docs/swagger.yaml", (_req, res) => {
   return res.sendFile(swaggerPath);
 });
+
+// Pasang Swagger
 app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 app.use((err, _req, res, _next) => {
