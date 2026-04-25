@@ -4,7 +4,7 @@ info:
   description: API Express untuk SPK (AHP-MOORA) dengan dual database Mitra/SPK.
   version: 2.0.0
 servers:
-  - url: http://127.0.0.1:5000
+  - url: /
     description: Local server
 
 components:
