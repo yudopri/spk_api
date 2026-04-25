@@ -1,0 +1,447 @@
+openapi: 3.0.0
+info:
+  title: SPK API Express
+  description: API Express untuk SPK (AHP-MOORA) dengan dual database Mitra/SPK.
+  version: 2.0.0
+servers:
+  - url: http://127.0.0.1:5000
+    description: Local server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+paths:
+  /api/auth/login:
+    post:
+      summary: User Login
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        '200':
+          description: Login successful
+
+  /api/auth/refresh:
+    post:
+      summary: Refresh Access Token
+      tags: [Authentication]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Token refreshed
+
+  /api/auth/logout:
+    post:
+      summary: Logout
+      tags: [Authentication]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Logged out
+
+  /api/auth/permissions:
+    get:
+      summary: Get all permissions
+      tags: [Access Control]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Permissions list
+    post:
+      summary: Create new permission
+      tags: [Access Control]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                permission_name: { type: string }
+                path: { type: string }
+      responses:
+        '200':
+          description: Permission created
+
+  /api/auth/roles-mitra:
+    get:
+      summary: Get all mitra enum roles with mapping status
+      tags: [Access Control]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Role list
+
+  /api/auth/seed-permissions:
+    post:
+      summary: Seed permissions and map role-permissions
+      tags: [Access Control]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Seed completed
+
+  /api/auth/audit-logs:
+    get:
+      summary: Get audit logs (Manager and Dev role)
+      tags: [Authentication]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        '200':
+          description: Audit log list
+
+  /api/auth/mitra-roles/{role_name}/permissions:
+    get:
+      summary: Get permissions by role
+      tags: [Access Control]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: role_name
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Permission names
+    post:
+      summary: Assign permission IDs to role
+      tags: [Access Control]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: role_name
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items: { type: integer }
+      responses:
+        '200':
+          description: Mapping updated
+
+  /api/spk/periode:
+    get:
+      summary: Get all periods
+      tags: [Master Data]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: List of periods
+    post:
+      summary: Create period
+      tags: [Master Data]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                NamaPeriode: { type: string }
+                Tahun: { type: integer }
+                DivisiId: { type: integer }
+                TanggalMulai: { type: string, format: date-time }
+                TanggalSelesai: { type: string, format: date-time }
+                Status: { type: string }
+      responses:
+        '200':
+          description: Created
+
+  /api/spk/periode/{id}:
+    put:
+      summary: Update period
+      tags: [Master Data]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Updated
+    delete:
+      summary: Delete period
+      tags: [Master Data]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Deleted
+
+  /api/spk/kpi:
+    get:
+      summary: Get KPI list
+      tags: [Master Data]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: periode_id
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          description: KPI list
+    post:
+      summary: Create KPI
+      tags: [Master Data]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                NamaKpi: { type: string }
+                Tipe: { type: string, enum: [Benefit, Cost] }
+                PeriodeId: { type: integer }
+      responses:
+        '200':
+          description: Created
+
+  /api/spk/kpi/{id}:
+    put:
+      summary: Update KPI
+      tags: [Master Data]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Updated
+    delete:
+      summary: Delete KPI
+      tags: [Master Data]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Deleted
+
+  /api/spk/ahp/perbandingan/{periode_id}:
+    get:
+      summary: Get AHP pairwise comparisons
+      tags: [AHP]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: periode_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Comparison list
+
+  /api/spk/ahp/perbandingan:
+    post:
+      summary: Save AHP comparison matrix
+      tags: [AHP]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                properties:
+                  PeriodeId: { type: integer }
+                  KpiAId: { type: integer }
+                  KpiBId: { type: integer }
+                  Nilai: { type: number }
+      responses:
+        '200':
+          description: Saved
+
+  /api/spk/ahp/calculate-weight/{periode_id}:
+    post:
+      summary: Calculate AHP weight and consistency
+      tags: [AHP]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: periode_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Weights calculated
+
+  /api/spk/moora/penilaian:
+    post:
+      summary: Save MOORA score inputs
+      tags: [MOORA]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                properties:
+                  KaryawanId: { type: integer }
+                  KpiId: { type: integer }
+                  PeriodeId: { type: integer }
+                  Nilai: { type: number }
+      responses:
+        '200':
+          description: Saved
+
+  /api/spk/moora/calculate/{periode_id}:
+    post:
+      summary: Execute MOORA ranking
+      tags: [MOORA]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: periode_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Ranking calculated
+
+  /api/spk/moora/hasil/{periode_id}:
+    get:
+      summary: Get MOORA result per period
+      tags: [MOORA]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: periode_id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: lokasi_kerja
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Ranked hasil_akhir data
+
+  /api/departments:
+    get:
+      summary: Get departments from legacy Mitra DB
+      tags: [Legacy Mitra]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Department list
+
+  /api/employees:
+    get:
+      summary: Get employees from legacy Mitra DB (NIK is bcrypt-hashed)
+      tags: [Legacy Mitra]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: dept_id
+          in: query
+          schema: { type: integer }
+        - name: lokasi_kerja
+          in: query
+          schema: { type: string }
+        - name: include_management_roles
+          in: query
+          schema: { type: boolean, default: false }
+        - name: role_group
+          in: query
+          schema:
+            type: string
+            enum: [management, staff]
+      responses:
+        '200':
+          description: Employee list (includes lokasi_kerja and work location mapping)
+
+
+  /api/work-locations:
+    get:
+      summary: Get work locations from legacy Mitra DB
+      tags: [Legacy Mitra]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [aktif, nonaktif]
+      responses:
+        '200':
+          description: Work location list
+
+  /api/spk/mitra/departments:
+    get:
+      summary: Backward-compatible alias for departments
+      tags: [Legacy Mitra]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Department list
+
+  /api/spk/mitra/karyawan:
+    get:
+      summary: Backward-compatible alias for employees (NIK is bcrypt-hashed)
+      tags: [Legacy Mitra]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: dept_id
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Employee list (includes lokasi_kerja and work location mapping)
+
+  /api/spk/mitra/work-locations:
+    get:
+      summary: Backward-compatible alias for work locations
+      tags: [Legacy Mitra]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [aktif, nonaktif]
+      responses:
+        '200':
+          description: Work location list
