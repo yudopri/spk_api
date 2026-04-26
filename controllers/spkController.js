@@ -511,7 +511,7 @@ async function getMooraResultHandler(req, res) {
 async function getDepartmentsHandler(req, res) {
   let rows = await getDepartments();
 
-  if (canOnlyViewOwnDivision(req.user?.role) || canOnlyViewSelfEmployee(req.user?.role)) {
+  if (canOnlyViewSelfEmployee(req.user?.role)) {
     const deptId = Number(req.user?.dept_id || 0);
     const ownDept = deptId ? await getDepartmentById(deptId) : null;
     rows = ownDept ? [ownDept] : [];
@@ -527,11 +527,6 @@ async function getEmployeesHandler(req, res) {
   });
 
   let filteredRows = [...rows];
-  if (canOnlyViewOwnDivision(req.user?.role)) {
-    const deptId = Number(req.user?.dept_id || 0);
-    filteredRows = filteredRows.filter((u) => Number(u.departemen_id || 0) === deptId);
-  }
-
   if (canOnlyViewSelfEmployee(req.user?.role)) {
     const actor = await getEmployeeByUserId(Number(req.user?.sub || 0));
     const actorEmployeeId = Number(actor?.employee_id || req.user?.employee_id || 0);
