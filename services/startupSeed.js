@@ -60,6 +60,7 @@ async function seedPermissionsData() {
       "periode_view",
       "kpi_view",
       "divisi_view",
+      "audit_view"
     ],
     Kadiv: [
       "spk_view",
@@ -76,7 +77,7 @@ async function seedPermissionsData() {
       "score_input"
     ],
     Dev: ["audit_view"],
-    "Adm Karyawan": ["spk_view", "employee_view", "department_view",, "divisi_view"],
+    "Adm Karyawan": ["spk_view", "employee_view", "department_view", "divisi_view"],
     Karyawan: ["spk_view", "employee_view", "department_view", "divisi_view"],
     "Adm Logistik": ["spk_view", "employee_view", "department_view",, "divisi_view"],
     "Adm Lapangan": ["spk_view", "employee_view", "department_view",, "divisi_view"],

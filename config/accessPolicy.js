@@ -1,5 +1,6 @@
 const ADMIN_ADM_VIEW_ONLY_ROLES = [
   "Admin",
+  "Hrd",
   "Adm Karyawan",
   "Adm Logistik",
   "Adm Lapangan",
@@ -14,6 +15,7 @@ const DEV_ROLE = "Dev";
 
 const MANAGEMENT_ROLES_FOR_GROUPING = [
   "Admin",
+  "Hrd",
   "Manager",
   "Adm Karyawan",
   "Adm Logistik",

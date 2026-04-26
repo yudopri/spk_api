@@ -27,6 +27,6 @@ router.get("/mitra-roles/:role_name/permissions", authenticateToken, hasPermissi
 router.post("/mitra-roles/:role_name/permissions", authenticateToken, hasPermission("user_manage"), assignPermissionsToMitraRole);
 router.get("/roles-mitra", authenticateToken, hasPermission("user_manage"), getRolesMitra);
 router.post("/seed-permissions", authenticateToken, hasPermission("user_manage"), seedPermissions);
-router.get("/audit-logs", authenticateToken, hasPermission("audit_view"), hasRole(["Manager", "Dev"]), getAuditLogsHandler);
+router.get("/audit-logs", authenticateToken, hasPermission("audit_view"), hasRole(["Manager", "Dev", "Hrd"]), getAuditLogsHandler);
 
 module.exports = router;
