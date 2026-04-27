@@ -20,7 +20,8 @@ async function seedPermissionsData() {
     { name: "kpi_view", path: "/api/spk/kpi" },
     { name: "kpi_manage", path: "/api/spk/kpi" },
     { name: "divisi_view", path: "/api/departments" },
-    { name: "score_input", path: "/api/spk/moora/penilaian" }
+    { name: "score_input", path: "/api/spk/moora/penilaian" },
+    { name: "report_view", path: "/api/spk/report" }
   ];
 
   for (const permission of permissionsList) {
@@ -35,7 +36,8 @@ async function seedPermissionsData() {
       "spk_view",
       "employee_view",
       "department_view",
-      "divisi_view"
+      "divisi_view",
+      "report_view"
     ],
     Manager: [
       "user_manage",
@@ -51,7 +53,8 @@ async function seedPermissionsData() {
       "kpi_view",
       "kpi_manage",
       "divisi_view",
-      "score_input"
+      "score_input",
+      "report_view"
     ],
     Hrd: [
       "spk_view",
@@ -74,16 +77,38 @@ async function seedPermissionsData() {
       "kpi_view",
       "kpi_manage",
       "divisi_view",
-      "score_input"
+      "score_input",
+      "report_view"
     ],
-    Dev: ["audit_view"],
-    "Adm Karyawan": ["spk_view", "employee_view", "department_view", "divisi_view"],
-    Karyawan: ["spk_view", "employee_view", "department_view", "divisi_view"],
-    "Adm Logistik": ["spk_view", "employee_view", "department_view",, "divisi_view"],
-    "Adm Lapangan": ["spk_view", "employee_view", "department_view",, "divisi_view"],
-    "Adm Keuangan": ["spk_view", "employee_view", "department_view",, "divisi_view"],
-    "Adm Pajak": ["spk_view", "employee_view", "department_view",, "divisi_view"],
-    "Adm Bpjs": ["spk_view", "employee_view", "department_view",, "divisi_view"]
+    Dev: ["user_manage",
+      "spk_view",
+      "spk_manage",
+      "spk_calculate",
+      "mitra_view",
+      "audit_view",
+      "employee_view",
+      "department_view",
+      "periode_view",
+      "periode_manage",
+      "kpi_view",
+      "kpi_manage",
+      "divisi_view",
+      "score_input",
+      "report_view"],
+    "Adm Karyawan": ["spk_view", "employee_view", "department_view", "divisi_view",
+      "report_view"],
+    Karyawan: ["spk_view", "employee_view", "department_view", "divisi_view",
+      "report_view"],
+    "Adm Logistik": ["spk_view", "employee_view", "department_view", "divisi_view",
+      "report_view"],
+    "Adm Lapangan": ["spk_view", "employee_view", "department_view", "divisi_view",
+      "report_view"],
+    "Adm Keuangan": ["spk_view", "employee_view", "department_view", "divisi_view",
+      "report_view"],
+    "Adm Pajak": ["spk_view", "employee_view", "department_view", "divisi_view",
+      "report_view"],
+    "Adm Bpjs": ["spk_view", "employee_view", "department_view", "divisi_view",
+      "report_view"]
   };
 
   for (const [roleName, permissionNames] of Object.entries(defaultMapping)) {
