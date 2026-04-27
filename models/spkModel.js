@@ -74,11 +74,11 @@ async function createPeriode(data) {
      VALUES(?, ?, ?, ?, ?, ?)`,
     [
       data.NamaPeriode,
-      data.Tahun || null,
-      data.DivisiId || null,
+      data.Tahun ?? null,
+      data.DivisiId ?? null,
       data.TanggalMulai,
       data.TanggalSelesai,
-      data.Status || "Draft"
+      data.Status ?? "Draft"
     ]
   );
   return result.insertId;
@@ -96,11 +96,11 @@ async function updatePeriode(id, data) {
      WHERE Id = ?`,
     [
       data.NamaPeriode,
-      data.Tahun || null,
-      data.DivisiId || null,
+      data.Tahun ?? null,
+      data.DivisiId ?? null,
       data.TanggalMulai,
       data.TanggalSelesai,
-      data.Status || "Draft",
+      data.Status ?? "Draft",
       id
     ]
   );

@@ -127,6 +127,7 @@ async function getPeriodeHandler(req, res) {
     periodes.map((p) => ({
       Id: p.Id,
       NamaPeriode: p.NamaPeriode,
+      Tahun: p.Tahun,
       DivisiId: p.DivisiId,
       NamaDivisi: divisionNameById.get(Number(p.DivisiId)) || null,
       TanggalMulai: toIso(p.TanggalMulai),
@@ -141,7 +142,29 @@ async function createPeriodeHandler(req, res) {
     return res.status(403).json({ success: false, message: "Role hanya memiliki akses view periode" });
   }
 
-  const data = req.body || {};
+  const raw = req.body || {};
+  const data = {
+    NamaPeriode: raw.NamaPeriode ?? raw.nama_periode ?? raw.namaPeriode ?? null,
+    Tahun: raw.Tahun ?? raw.tahun ?? null,
+    DivisiId: raw.DivisiId ?? raw.divisi_id ?? raw.divisiId ?? null,
+    TanggalMulai: raw.TanggalMulai ?? raw.tanggal_mulai ?? raw.tanggalMulai ?? null,
+    TanggalSelesai: raw.TanggalSelesai ?? raw.tanggal_selesai ?? raw.tanggalSelesai ?? null,
+    Status: raw.Status ?? raw.status ?? "Draft"
+  };
+
+  if (data.Tahun !== null && data.Tahun !== "") {
+    const tahunNumber = Number(data.Tahun);
+    data.Tahun = Number.isFinite(tahunNumber) ? tahunNumber : null;
+  } else {
+    data.Tahun = null;
+  }
+
+  if (data.DivisiId !== null && data.DivisiId !== "") {
+    const divisiNumber = Number(data.DivisiId);
+    data.DivisiId = Number.isFinite(divisiNumber) ? divisiNumber : null;
+  } else {
+    data.DivisiId = null;
+  }
 
   if (req.user?.role === "Kadiv") {
     data.DivisiId = Number(req.user?.dept_id || 0) || data.DivisiId;
@@ -163,7 +186,30 @@ async function updatePeriodeHandler(req, res) {
     return res.status(403).json({ success: false, message: "Tidak boleh mengubah periode lintas divisi" });
   }
 
-  const payload = { ...req.body };
+  const raw = req.body || {};
+  const payload = {
+    NamaPeriode: raw.NamaPeriode ?? raw.nama_periode ?? raw.namaPeriode,
+    Tahun: raw.Tahun ?? raw.tahun,
+    DivisiId: raw.DivisiId ?? raw.divisi_id ?? raw.divisiId,
+    TanggalMulai: raw.TanggalMulai ?? raw.tanggal_mulai ?? raw.tanggalMulai,
+    TanggalSelesai: raw.TanggalSelesai ?? raw.tanggal_selesai ?? raw.tanggalSelesai,
+    Status: raw.Status ?? raw.status
+  };
+
+  if (payload.Tahun !== undefined && payload.Tahun !== null && payload.Tahun !== "") {
+    const tahunNumber = Number(payload.Tahun);
+    payload.Tahun = Number.isFinite(tahunNumber) ? tahunNumber : existing.Tahun;
+  } else if (payload.Tahun === "") {
+    payload.Tahun = existing.Tahun;
+  }
+
+  if (payload.DivisiId !== undefined && payload.DivisiId !== null && payload.DivisiId !== "") {
+    const divisiNumber = Number(payload.DivisiId);
+    payload.DivisiId = Number.isFinite(divisiNumber) ? divisiNumber : existing.DivisiId;
+  } else if (payload.DivisiId === "") {
+    payload.DivisiId = existing.DivisiId;
+  }
+
   if (req.user?.role === "Kadiv") {
     payload.DivisiId = Number(req.user?.dept_id || 0) || existing.DivisiId;
   }
@@ -192,7 +238,18 @@ async function deletePeriodeHandler(req, res) {
     return res.status(403).json({ success: false, message: "Tidak boleh menghapus periode lintas divisi" });
   }
 
-  await deletePeriode(periodeId);
+  try {
+    await deletePeriode(periodeId);
+  } catch (error) {
+    if (error?.code === "ER_ROW_IS_REFERENCED_2" || error?.code === "ER_ROW_IS_REFERENCED") {
+      return res.status(409).json({
+        success: false,
+        message: "Periode tidak bisa dihapus karena masih dipakai oleh data turunan (misalnya KPI/penilaian/hasil)."
+      });
+    }
+    throw error;
+  }
+
   await logActivity(req, "DELETE", "Periode", { Id: periodeId });
   return res.json({ success: true, message: "Periode berhasil dihapus" });
 }
