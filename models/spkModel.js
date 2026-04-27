@@ -113,18 +113,31 @@ async function deletePeriode(id) {
 async function getKpis(periodeId) {
   if (periodeId) {
     return querySpk(
-      "SELECT Id, NamaKpi, Tipe, BobotAhp, PeriodeId FROM kpis WHERE PeriodeId = ? ORDER BY Id ASC",
+      `SELECT k.Id, k.NamaKpi, k.Tipe, k.BobotAhp, k.PeriodeId, k.attributeId,
+              ms.nama AS nama_satuan, ms.simbol AS simbol
+       FROM kpis k
+       LEFT JOIN attribute ms ON ms.id = k.attributeId
+       WHERE k.PeriodeId = ?
+       ORDER BY k.Id ASC`,
       [periodeId]
     );
   }
-  return querySpk("SELECT Id, NamaKpi, Tipe, BobotAhp, PeriodeId FROM kpis ORDER BY Id ASC");
+  return querySpk(
+    `SELECT k.Id, k.NamaKpi, k.Tipe, k.BobotAhp, k.PeriodeId, k.attributeId,
+            ms.nama AS nama_satuan, ms.simbol AS simbol
+     FROM kpis k
+     LEFT JOIN attribute ms ON ms.id = k.attributeId
+     ORDER BY k.Id ASC`
+  );
 }
 
 async function getKpisByDivision(divisiId, periodeId) {
   let sql =
-    `SELECT k.Id, k.NamaKpi, k.Tipe, k.BobotAhp, k.PeriodeId
+    `SELECT k.Id, k.NamaKpi, k.Tipe, k.BobotAhp, k.PeriodeId, k.attributeId,
+            ms.nama AS nama_satuan, ms.simbol AS simbol
      FROM kpis k
      JOIN periodes p ON p.Id = k.PeriodeId
+     LEFT JOIN attribute ms ON ms.id = k.attributeId
      WHERE p.DivisiId = ?`;
   const params = [divisiId];
 
@@ -139,9 +152,9 @@ async function getKpisByDivision(divisiId, periodeId) {
 
 async function createKpi(data) {
   const result = await querySpk(
-    `INSERT INTO kpis(NamaKpi, Tipe, PeriodeId, BobotAhp)
-     VALUES(?, ?, ?, ?)`,
-    [data.NamaKpi, data.Tipe, data.PeriodeId, data.BobotAhp || 0]
+    `INSERT INTO kpis(NamaKpi, Tipe, PeriodeId, BobotAhp, attributeId)
+     VALUES(?, ?, ?, ?, ?)`,
+    [data.NamaKpi, data.Tipe, data.PeriodeId, data.BobotAhp || 0, data.attributeId || null]
   );
   return result.insertId;
 }

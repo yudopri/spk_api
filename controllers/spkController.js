@@ -113,6 +113,8 @@ function canAccessPeriodeForUser(user, periode) {
 async function getPeriodeHandler(req, res) {
   const role = req.user?.role;
   let periodes = [];
+  const departments = await getDepartments();
+  const divisionNameById = new Map(departments.map((d) => [Number(d.id), d.name]));
 
   if (canOnlyViewOwnDivision(role) || canOnlyViewSelfEmployee(role)) {
     const deptId = Number(req.user?.dept_id || 0);
@@ -125,6 +127,8 @@ async function getPeriodeHandler(req, res) {
     periodes.map((p) => ({
       Id: p.Id,
       NamaPeriode: p.NamaPeriode,
+      DivisiId: p.DivisiId,
+      NamaDivisi: divisionNameById.get(Number(p.DivisiId)) || null,
       TanggalMulai: toIso(p.TanggalMulai),
       TanggalSelesai: toIso(p.TanggalSelesai),
       Status: p.Status
@@ -210,7 +214,10 @@ async function getKpiHandler(req, res) {
       NamaKpi: k.NamaKpi,
       Tipe: k.Tipe,
       BobotAhp: k.BobotAhp,
-      PeriodeId: k.PeriodeId
+      PeriodeId: k.PeriodeId,
+      attributeId: k.attributeId || null,
+      nama_satuan: k.nama_satuan || null,
+      simbol: k.simbol || null
     }))
   );
 }
@@ -221,6 +228,7 @@ async function createKpiHandler(req, res) {
   }
 
   const data = req.body || {};
+  data.attributeId = data.id_satuan ?? data.attributeId ?? null;
   if (req.user?.role === "Kadiv") {
     const periode = await getPeriodeById(Number(data.PeriodeId || 0));
     if (!canAccessPeriodeForUser(req.user, periode)) {
@@ -231,6 +239,52 @@ async function createKpiHandler(req, res) {
   const insertId = await createKpi(data);
   await logActivity(req, "CREATE", "Criterion", { Id: insertId, Nama: data.NamaKpi });
   return res.json({ success: true, Id: insertId });
+}
+
+async function getAttributesHandler(req, res) {
+  const rows = await querySpk(
+    `SELECT id, nama, simbol
+     FROM attribute
+     ORDER BY id ASC`
+  );
+
+  return res.json(
+    rows.map((row) => ({
+      id: row.id,
+      nama: row.nama,
+      simbol: row.simbol
+    }))
+  );
+}
+
+async function createAttributeHandler(req, res) {
+  const { nama, simbol } = req.body || {};
+
+  if (!nama || !simbol) {
+    return res.status(400).json({ success: false, message: "nama dan simbol wajib diisi" });
+  }
+
+  const result = await querySpk(
+    `INSERT INTO attribute(nama, simbol)
+     VALUES(?, ?)`,
+    [nama, simbol]
+  );
+
+  return res.json({ success: true, Id: result.insertId, message: "Attribute berhasil disimpan" });
+}
+
+async function deleteAttributeHandler(req, res) {
+  const id = Number(req.params.id);
+  if (!id) {
+    return res.status(400).json({ success: false, message: "ID attribute tidak valid" });
+  }
+
+  const result = await querySpk("DELETE FROM attribute WHERE id = ?", [id]);
+  if (!result.affectedRows) {
+    return res.status(404).json({ success: false, message: "Attribute tidak ditemukan" });
+  }
+
+  return res.json({ success: true, message: "Attribute berhasil dihapus" });
 }
 
 async function updateKpiHandler(req, res) {
@@ -611,6 +665,9 @@ module.exports = {
   createKpiHandler,
   updateKpiHandler,
   deleteKpiHandler,
+  getAttributesHandler,
+  createAttributeHandler,
+  deleteAttributeHandler,
   getComparisonsHandler,
   inputComparisonHandler,
   calculateWeightsHandler,

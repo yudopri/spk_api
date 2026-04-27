@@ -148,6 +148,20 @@ paths:
       responses:
         '200':
           description: List of periods
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    Id: { type: integer }
+                    NamaPeriode: { type: string }
+                    DivisiId: { type: integer, nullable: true }
+                    NamaDivisi: { type: string, nullable: true }
+                    TanggalMulai: { type: string, format: date-time, nullable: true }
+                    TanggalSelesai: { type: string, format: date-time, nullable: true }
+                    Status: { type: string }
     post:
       summary: Create period
       tags: [Master Data]
@@ -198,6 +212,75 @@ paths:
       responses:
         '200':
           description: Deleted
+          
+  /api/attribute:
+    get:
+      summary: Get attributes list
+      tags: [Master Data]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Attribute list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: integer }
+                    nama: { type: string }
+                    simbol: { type: string }
+    post:
+      summary: Create attribute
+      tags: [Master Data]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nama: { type: string }
+                simbol: { type: string }
+              required: [nama, simbol]
+      responses:
+        '200':
+          description: Created
+
+  /api/attribute/{id}:
+    put:
+      summary: Update attribute
+      tags: [Master Data]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nama: { type: string }
+                simbol: { type: string }
+      responses:
+        '200':
+          description: Updated
+    delete:
+      summary: Delete attribute
+      tags: [Master Data]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Deleted
 
   /api/spk/kpi:
     get:
@@ -224,10 +307,12 @@ paths:
                 NamaKpi: { type: string }
                 Tipe: { type: string, enum: [Benefit, Cost] }
                 PeriodeId: { type: integer }
+                id_satuan: { type: integer, nullable: true }
+                attributeId: { type: integer, nullable: true }
       responses:
         '200':
           description: Created
-
+          
   /api/spk/kpi/{id}:
     put:
       summary: Update KPI
