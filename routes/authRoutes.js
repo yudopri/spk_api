@@ -8,7 +8,8 @@ const {
   getPermissionsByMitraRole,
   assignPermissionsToMitraRole,
   getRolesMitra,
-  seedPermissions
+  seedPermissions,
+  getUsers
 } = require("../controllers/authController");
 const { getAuditLogsHandler } = require("../controllers/spkController");
 const { authenticateToken, requireRefreshToken } = require("../middlewares/authMiddleware");
@@ -27,6 +28,7 @@ router.get("/mitra-roles/:role_name/permissions", authenticateToken, hasPermissi
 router.post("/mitra-roles/:role_name/permissions", authenticateToken, hasPermission("user_manage"), assignPermissionsToMitraRole);
 router.get("/roles-mitra", authenticateToken, hasPermission("user_manage"), getRolesMitra);
 router.post("/seed-permissions", authenticateToken, hasPermission("user_manage"), seedPermissions);
+router.get("/users", authenticateToken, hasPermission("user_manage"), getUsers);
 router.get("/audit-logs", authenticateToken, hasPermission("audit_view"), hasRole(["Manager", "Dev", "Hrd"]), getAuditLogsHandler);
 
 module.exports = router;

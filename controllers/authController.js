@@ -12,7 +12,8 @@ const {
   createPermission,
   getOrCreateRoleByName,
   setRolePermissions,
-  getRolePermissionNames
+  getRolePermissionNames,
+  getAllUsers
 } = require("../models/authModel");
 
 function signAccessToken(payload) {
@@ -168,6 +169,25 @@ async function seedPermissions(_req, res) {
   return res.json({ success: true, message: "Permissions seeded and mapped to Enum roles successfully" });
 }
 
+async function getUsers(_req, res) {
+  try {
+    const { getAllUsers } = require("../models/authModel");
+    const users = await getAllUsers();
+    return res.json({ success: true, data: users });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+  }
+}
+
+async function getUsers(_req, res) {
+  try {
+    const users = await getAllUsers();
+    return res.json({ success: true, data: users });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+  }
+}
+
 module.exports = {
   login,
   refresh,
@@ -177,5 +197,6 @@ module.exports = {
   getPermissionsByMitraRole,
   assignPermissionsToMitraRole,
   getRolesMitra,
-  seedPermissions
+  seedPermissions,
+  getUsers
 };
