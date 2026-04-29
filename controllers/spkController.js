@@ -359,6 +359,7 @@ async function updateKpiHandler(req, res) {
 
   const payload = req.body || {};
   const targetPeriodeId = Number(payload.PeriodeId || existing.PeriodeId);
+  const targetAttributeId = Number(payload.attributeId ?? existing.attributeId ?? 0);
   const targetPeriode = await getPeriodeById(targetPeriodeId);
   if (!canAccessPeriodeForUser(req.user, targetPeriode)) {
     return res.status(403).json({ success: false, message: "Tidak boleh memindahkan KPI ke periode lintas divisi" });
@@ -368,6 +369,7 @@ async function updateKpiHandler(req, res) {
     NamaKpi: payload.NamaKpi || existing.NamaKpi,
     Tipe: payload.Tipe || existing.Tipe,
     PeriodeId: targetPeriodeId,
+    attributeId: targetAttributeId,
     BobotAhp: payload.BobotAhp ?? existing.BobotAhp
   });
 
