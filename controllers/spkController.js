@@ -359,7 +359,7 @@ async function updateKpiHandler(req, res) {
 
   const payload = req.body || {};
   const targetPeriodeId = Number(payload.PeriodeId || existing.PeriodeId);
-  const targetAttributeId = Number(payload.attributeId ?? existing.attributeId ?? 0);
+  const targetAttributeId = Number(payload.attributeId ?? payload.id_satuan ?? existing.attributeId ?? 0);
   const targetPeriode = await getPeriodeById(targetPeriodeId);
   if (!canAccessPeriodeForUser(req.user, targetPeriode)) {
     return res.status(403).json({ success: false, message: "Tidak boleh memindahkan KPI ke periode lintas divisi" });
