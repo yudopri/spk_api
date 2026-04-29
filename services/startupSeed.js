@@ -37,6 +37,8 @@ async function seedPermissionsData() {
       "employee_view",
       "department_view",
       "divisi_view",
+      "kpi_view",
+      "periode_view",
       "report_view"
     ],
     Manager: [
@@ -95,19 +97,19 @@ async function seedPermissionsData() {
       "divisi_view",
       "score_input",
       "report_view"],
-    "Adm Karyawan": ["spk_view", "employee_view", "department_view", "divisi_view",
+    "Adm Karyawan": ["spk_view", "employee_view", "department_view", "divisi_view","kpi_view", "periode_view",
       "report_view"],
-    Karyawan: ["spk_view", "employee_view", "department_view", "divisi_view",
+    Karyawan: ["employee_view", "department_view", "divisi_view", "periode_view",
       "report_view"],
-    "Adm Logistik": ["spk_view", "employee_view", "department_view", "divisi_view",
+    "Adm Logistik": ["spk_view", "employee_view", "department_view", "divisi_view", "kpi_view", "periode_view",
       "report_view"],
-    "Adm Lapangan": ["spk_view", "employee_view", "department_view", "divisi_view",
+    "Adm Lapangan": ["spk_view", "employee_view", "department_view", "divisi_view", "kpi_view", "periode_view",
       "report_view"],
-    "Adm Keuangan": ["spk_view", "employee_view", "department_view", "divisi_view",
+    "Adm Keuangan": ["spk_view", "employee_view", "department_view", "divisi_view", "kpi_view", "periode_view",
       "report_view"],
-    "Adm Pajak": ["spk_view", "employee_view", "department_view", "divisi_view",
+    "Adm Pajak": ["spk_view", "employee_view", "department_view", "divisi_view", "kpi_view", "periode_view",
       "report_view"],
-    "Adm Bpjs": ["spk_view", "employee_view", "department_view", "divisi_view",
+    "Adm Bpjs": ["spk_view", "employee_view", "department_view", "divisi_view", "kpi_view", "periode_view",
       "report_view"]
   };
 
