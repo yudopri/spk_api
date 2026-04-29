@@ -165,9 +165,10 @@ async function updateKpi(id, data) {
      SET NamaKpi = ?,
          Tipe = ?,
          PeriodeId = ?,
+         attributeId = ?,
          BobotAhp = ?
      WHERE Id = ?`,
-    [data.NamaKpi, data.Tipe, data.PeriodeId, data.BobotAhp || 0, id]
+    [data.NamaKpi, data.Tipe, data.PeriodeId, data.attributeId || null, data.BobotAhp || 0, id]
   );
 }
 
