@@ -104,6 +104,8 @@ function canAccessPeriodeForUser(user, periode) {
   if (isFullAccessRole(role) || isDevRole(role)) return true;
 
   if (canOnlyViewOwnDivision(role) || canOnlyViewSelfEmployee(role)) {
+    // If periode.DivisiId is null, it means it's for all divisions
+    if (periode.DivisiId === null) return true;
     return Number(user?.dept_id || 0) === Number(periode.DivisiId || 0);
   }
 
@@ -715,6 +717,96 @@ async function getAuditLogsHandler(req, res) {
   });
 }
 
+async function getIndividualReportHandler(req, res) {
+  const { periode_id, karyawan_id } = req.params;
+  const periode = await getPeriodeById(Number(periode_id));
+  if (!canAccessPeriodeForUser(req.user, periode)) {
+    return res.status(403).json({ success: false, message: "Tidak boleh akses laporan lintas divisi" });
+  }
+
+  const kpis = await getKpis(Number(periode_id));
+  const rawEvals = await getEvaluationsByPeriode(Number(periode_id));
+  const userEvals = rawEvals.filter((e) => Number(e.KaryawanId) === Number(karyawan_id));
+
+  const employees = await getEmployeesByIds([Number(karyawan_id)]);
+  const employee = employees[0] || null;
+
+  const data = kpis.map((k) => {
+    const ev = userEvals.find((e) => Number(e.KpiId) === Number(k.Id));
+    return {
+      Kriteria: k.NamaKpi,
+      Nilai: ev ? ev.Nilai : 0,
+      Satuan: k.simbol || ""
+    };
+  });
+
+  const summary = await getHasilAkhirByPeriode(Number(periode_id));
+  const result = summary.find((s) => Number(s.KaryawanId) === Number(karyawan_id));
+
+  return res.json({
+    success: true,
+    metadata: {
+      Nama: employee?.name || "N/A",
+      NIK: employee?.nik || "N/A",
+      Periode: periode?.NamaPeriode || "N/A",
+      Tahun: periode?.Tahun || "N/A"
+    },
+    rincian: data,
+    kesimpulan: result
+      ? {
+          Ranking: result.Ranking,
+          Skor: result.NilaiOptimasi
+        }
+      : null
+  });
+}
+
+async function getSummaryReportHandler(req, res) {
+  const periodeId = Number(req.params.periode_id);
+  const periode = await getPeriodeById(periodeId);
+  if (!canAccessPeriodeForUser(req.user, periode)) {
+    return res.status(403).json({ success: false, message: "Tidak boleh akses laporan lintas divisi" });
+  }
+
+  const kpis = await getKpis(periodeId);
+  const results = await getHasilAkhirByPeriode(periodeId);
+  const evaluations = await getEvaluationsByPeriode(periodeId);
+
+  const employeeIds = results.map((r) => Number(r.KaryawanId));
+  const employees = await getEmployeesByIds(employeeIds);
+  const empMap = new Map(employees.map((e) => [Number(e.id), e]));
+
+  const evalMap = {};
+  evaluations.forEach((ev) => {
+    const kId = Number(ev.KaryawanId);
+    if (!evalMap[kId]) evalMap[kId] = {};
+    evalMap[kId][Number(ev.KpiId)] = ev.Nilai;
+  });
+
+  const data = results.map((res) => {
+    const emp = empMap.get(Number(res.KaryawanId));
+    const row = {
+      NIK: emp?.nik || "N/A",
+      Nama: emp?.name || "N/A",
+      Ranking: res.Ranking,
+      Skor: res.NilaiOptimasi
+    };
+
+    kpis.forEach((k) => {
+      row[k.NamaKpi] = evalMap[Number(res.KaryawanId)]?.[Number(k.Id)] || 0;
+    });
+
+    return row;
+  });
+
+  return res.json({
+    success: true,
+    title: `Laporan Rekapitulasi - ${periode?.NamaPeriode || ""}`,
+    columns: ["NIK", "Nama", ...kpis.map((k) => k.NamaKpi), "Skor", "Ranking"],
+    data
+  });
+}
+
 module.exports = {
   getPeriodeHandler,
   createPeriodeHandler,
@@ -733,6 +825,8 @@ module.exports = {
   inputPenilaianHandler,
   calculateMooraHandler,
   getMooraResultHandler,
+  getIndividualReportHandler,
+  getSummaryReportHandler,
   getDepartmentsHandler,
   getEmployeesHandler,
   getWorkLocationsHandler,

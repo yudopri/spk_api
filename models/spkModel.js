@@ -51,7 +51,7 @@ async function getPeriodesByDivision(divisiId) {
   return querySpk(
     `SELECT Id, NamaPeriode, Tahun, DivisiId, TanggalMulai, TanggalSelesai, Status
      FROM periodes
-     WHERE DivisiId = ?
+     WHERE DivisiId = ? OR DivisiId IS NULL
      ORDER BY Id DESC`,
     [divisiId]
   );
@@ -138,7 +138,7 @@ async function getKpisByDivision(divisiId, periodeId) {
      FROM kpis k
      JOIN periodes p ON p.Id = k.PeriodeId
      LEFT JOIN attribute ms ON ms.id = k.attributeId
-     WHERE p.DivisiId = ?`;
+     WHERE (p.DivisiId = ? OR p.DivisiId IS NULL)`;
   const params = [divisiId];
 
   if (periodeId) {
