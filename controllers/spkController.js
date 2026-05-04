@@ -27,6 +27,7 @@ const {
   getEmployeeLocationsByIds,
   getDistinctKaryawanIdsByPeriode,
   getEvaluationChunk,
+  getEvaluationsByPeriode,
   getAuditLogs
 } = require("../models/spkModel");
 const { querySpk } = require("../config/db");
@@ -832,8 +833,9 @@ async function getIndividualReportHandler(req, res) {
         : null
     });
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ success: false, message: "Internal Server Error" });
+    console.error("DEBUG REPORT ERROR:", err.message);
+    console.error(err.stack);
+    return res.status(500).json({ success: false, message: "Internal Server Error", error_detail: err.message });
   }
 }
 
@@ -915,8 +917,9 @@ async function getSummaryReportHandler(req, res) {
       data
     });
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ success: false, message: "Internal Server Error" });
+    console.error("DEBUG SUMMARY ERROR:", err.message);
+    console.error(err.stack);
+    return res.status(500).json({ success: false, message: "Internal Server Error", error_detail: err.message });
   }
 }
 
