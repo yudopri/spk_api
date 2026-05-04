@@ -469,6 +469,44 @@ paths:
         '200':
           description: Ranked hasil_akhir data
 
+  /api/spk/report/individual/{periode_id}/{karyawan_id}:
+    get:
+      summary: Get individual report (JSON or PDF)
+      tags: [Reports]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: periode_id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: karyawan_id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: format
+          in: query
+          schema: { type: string, enum: [json, pdf], default: json }
+      responses:
+        '200':
+          description: OK
+
+  /api/spk/report/summary/{periode_id}:
+    get:
+      summary: Get summary report (JSON or Excel)
+      tags: [Reports]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: periode_id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: format
+          in: query
+          schema: { type: string, enum: [json, excel], default: json }
+      responses:
+        '200':
+          description: OK
+
   /api/departments:
     get:
       summary: Get departments from legacy Mitra DB

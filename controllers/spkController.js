@@ -39,6 +39,8 @@ const {
   isManagementRoleForGrouping
 } = require("../config/accessPolicy");
 const crypto = require("crypto");
+const ExcelJS = require("exceljs");
+const { PDFDocument, rgb, StandardFonts } = require("pdf-lib");
 
 async function logActivity(req, action, entity, details) {
   await insertAuditLog({
@@ -719,92 +721,183 @@ async function getAuditLogsHandler(req, res) {
 
 async function getIndividualReportHandler(req, res) {
   const { periode_id, karyawan_id } = req.params;
-  const periode = await getPeriodeById(Number(periode_id));
-  if (!canAccessPeriodeForUser(req.user, periode)) {
-    return res.status(403).json({ success: false, message: "Tidak boleh akses laporan lintas divisi" });
+  const format = req.query.format || "json";
+
+  try {
+    const periode = await getPeriodeById(Number(periode_id));
+    if (!canAccessPeriodeForUser(req.user, periode)) {
+      return res.status(403).json({ success: false, message: "Tidak boleh akses laporan lintas divisi" });
+    }
+
+    const kpis = await getKpis(Number(periode_id));
+    const rawEvals = await getEvaluationsByPeriode(Number(periode_id));
+    const userEvals = rawEvals.filter((e) => Number(e.KaryawanId) === Number(karyawan_id));
+
+    const employees = await getEmployeesByIds([Number(karyawan_id)]);
+    const employee = employees[0] || null;
+
+    const data = kpis.map((k) => {
+      const ev = userEvals.find((e) => Number(e.KpiId) === Number(k.Id));
+      return {
+        Kriteria: k.NamaKpi,
+        Nilai: ev ? ev.Nilai : 0,
+        Satuan: k.simbol || ""
+      };
+    });
+
+    const summary = await getHasilAkhirByPeriode(Number(periode_id));
+    const result = summary.find((s) => Number(s.KaryawanId) === Number(karyawan_id));
+
+    if (format === "pdf") {
+      const pdfDoc = await PDFDocument.create();
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+      let page = pdfDoc.addPage([595.28, 841.89]); // A4
+      const { width, height } = page.getSize();
+
+      page.drawText("FORM PENILAIAN KARYAWAN", { x: 50, y: height - 50, size: 16, font: fontBold });
+      page.drawText(`Nama: ${employee?.name || "N/A"}`, { x: 50, y: height - 80, size: 12, font });
+      page.drawText(`NIK: ${employee?.nik || "N/A"}`, { x: 50, y: height - 100, size: 12, font });
+      page.drawText(`Periode: ${periode?.NamaPeriode || "N/A"} ${periode?.Tahun || ""}`, { x: 50, y: height - 120, size: 12, font });
+
+      let yPos = height - 160;
+      page.drawText("No", { x: 50, y: yPos, size: 11, font: fontBold });
+      page.drawText("Kriteria", { x: 80, y: yPos, size: 11, font: fontBold });
+      page.drawText("Nilai", { x: 450, y: yPos, size: 11, font: fontBold });
+      page.drawLine({ start: { x: 50, y: yPos - 5 }, end: { x: 545, y: yPos - 5 }, thickness: 1 });
+
+      yPos -= 25;
+      data.forEach((item, idx) => {
+        page.drawText(`${idx + 1}`, { x: 50, y: yPos, size: 10, font });
+        page.drawText(`${item.Kriteria}`, { x: 80, y: yPos, size: 10, font });
+        page.drawText(`${item.Nilai} ${item.Satuan}`, { x: 450, y: yPos, size: 10, font });
+        yPos -= 20;
+      });
+
+      page.drawLine({ start: { x: 50, y: yPos + 10 }, end: { x: 545, y: yPos + 10 }, thickness: 1 });
+      yPos -= 20;
+      if (result) {
+        page.drawText(`Hasil Akhir: ${result.NilaiOptimasi.toFixed(4)}`, { x: 50, y: yPos, size: 11, font: fontBold });
+        page.drawText(`Ranking: ${result.Ranking}`, { x: 450, y: yPos, size: 11, font: fontBold });
+      }
+
+      yPos -= 80;
+      page.drawText("Mengetahui,", { x: 50, y: yPos, size: 11, font });
+      page.drawText("Disetujui Oleh,", { x: 380, y: yPos, size: 11, font });
+      yPos -= 60;
+      page.drawText("(.................................)", { x: 50, y: yPos, size: 11, font });
+      page.drawText("(.................................)", { x: 380, y: yPos, size: 11, font });
+      page.drawText("Kepala Divisi", { x: 85, y: yPos - 15, size: 10, font });
+      page.drawText("Pimpinan", { x: 425, y: yPos - 15, size: 10, font });
+
+      const pdfBytes = await pdfDoc.save();
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename=Report_${employee?.name || "User"}.pdf`);
+      return res.send(Buffer.from(pdfBytes));
+    }
+
+    return res.json({
+      success: true,
+      metadata: {
+        Nama: employee?.name || "N/A",
+        NIK: employee?.nik || "N/A",
+        Periode: periode?.NamaPeriode || "N/A",
+        Tahun: periode?.Tahun || "N/A"
+      },
+      rincian: data,
+      kesimpulan: result
+        ? {
+            Ranking: result.Ranking,
+            Skor: result.NilaiOptimasi
+          }
+        : null
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
-
-  const kpis = await getKpis(Number(periode_id));
-  const rawEvals = await getEvaluationsByPeriode(Number(periode_id));
-  const userEvals = rawEvals.filter((e) => Number(e.KaryawanId) === Number(karyawan_id));
-
-  const employees = await getEmployeesByIds([Number(karyawan_id)]);
-  const employee = employees[0] || null;
-
-  const data = kpis.map((k) => {
-    const ev = userEvals.find((e) => Number(e.KpiId) === Number(k.Id));
-    return {
-      Kriteria: k.NamaKpi,
-      Nilai: ev ? ev.Nilai : 0,
-      Satuan: k.simbol || ""
-    };
-  });
-
-  const summary = await getHasilAkhirByPeriode(Number(periode_id));
-  const result = summary.find((s) => Number(s.KaryawanId) === Number(karyawan_id));
-
-  return res.json({
-    success: true,
-    metadata: {
-      Nama: employee?.name || "N/A",
-      NIK: employee?.nik || "N/A",
-      Periode: periode?.NamaPeriode || "N/A",
-      Tahun: periode?.Tahun || "N/A"
-    },
-    rincian: data,
-    kesimpulan: result
-      ? {
-          Ranking: result.Ranking,
-          Skor: result.NilaiOptimasi
-        }
-      : null
-  });
 }
 
 async function getSummaryReportHandler(req, res) {
   const periodeId = Number(req.params.periode_id);
-  const periode = await getPeriodeById(periodeId);
-  if (!canAccessPeriodeForUser(req.user, periode)) {
-    return res.status(403).json({ success: false, message: "Tidak boleh akses laporan lintas divisi" });
-  }
+  const format = req.query.format || "json";
 
-  const kpis = await getKpis(periodeId);
-  const results = await getHasilAkhirByPeriode(periodeId);
-  const evaluations = await getEvaluationsByPeriode(periodeId);
+  try {
+    const periode = await getPeriodeById(periodeId);
+    if (!canAccessPeriodeForUser(req.user, periode)) {
+      return res.status(403).json({ success: false, message: "Tidak boleh akses laporan lintas divisi" });
+    }
 
-  const employeeIds = results.map((r) => Number(r.KaryawanId));
-  const employees = await getEmployeesByIds(employeeIds);
-  const empMap = new Map(employees.map((e) => [Number(e.id), e]));
+    const kpis = await getKpis(periodeId);
+    const results = await getHasilAkhirByPeriode(periodeId);
+    const evaluations = await getEvaluationsByPeriode(periodeId);
 
-  const evalMap = {};
-  evaluations.forEach((ev) => {
-    const kId = Number(ev.KaryawanId);
-    if (!evalMap[kId]) evalMap[kId] = {};
-    evalMap[kId][Number(ev.KpiId)] = ev.Nilai;
-  });
+    const employeeIds = results.map((r) => Number(r.KaryawanId));
+    const employees = await getEmployeesByIds(employeeIds);
+    const empMap = new Map(employees.map((e) => [Number(e.id), e]));
 
-  const data = results.map((res) => {
-    const emp = empMap.get(Number(res.KaryawanId));
-    const row = {
-      NIK: emp?.nik || "N/A",
-      Nama: emp?.name || "N/A",
-      Ranking: res.Ranking,
-      Skor: res.NilaiOptimasi
-    };
-
-    kpis.forEach((k) => {
-      row[k.NamaKpi] = evalMap[Number(res.KaryawanId)]?.[Number(k.Id)] || 0;
+    const evalMap = {};
+    evaluations.forEach((ev) => {
+      const kId = Number(ev.KaryawanId);
+      if (!evalMap[kId]) evalMap[kId] = {};
+      evalMap[kId][Number(ev.KpiId)] = ev.Nilai;
     });
 
-    return row;
-  });
+    const data = results.map((res) => {
+      const emp = empMap.get(Number(res.KaryawanId));
+      const row = {
+        NIK: emp?.nik || "N/A",
+        Nama: emp?.name || "N/A",
+        Ranking: res.Ranking,
+        Skor: res.NilaiOptimasi
+      };
 
-  return res.json({
-    success: true,
-    title: `Laporan Rekapitulasi - ${periode?.NamaPeriode || ""}`,
-    columns: ["NIK", "Nama", ...kpis.map((k) => k.NamaKpi), "Skor", "Ranking"],
-    data
-  });
+      kpis.forEach((k) => {
+        row[k.NamaKpi] = evalMap[Number(res.KaryawanId)]?.[Number(k.Id)] || 0;
+      });
+
+      return row;
+    });
+
+    if (format === "excel") {
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("Rekapitulasi");
+
+      const columns = [
+        { header: "No", key: "no", width: 5 },
+        { header: "NIK", key: "NIK", width: 15 },
+        { header: "Nama", key: "Nama", width: 30 },
+        ...kpis.map((k) => ({ header: k.NamaKpi, key: k.NamaKpi, width: 15 })),
+        { header: "Skor", key: "Skor", width: 12 },
+        { header: "Ranking", key: "Ranking", width: 10 }
+      ];
+
+      worksheet.columns = columns;
+
+      data.forEach((row, idx) => {
+        worksheet.addRow({ no: idx + 1, ...row });
+      });
+
+      // Styling
+      worksheet.getRow(1).font = { bold: true };
+      worksheet.getRow(1).alignment = { vertical: "middle", horizontal: "center" };
+
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename=Rekap_${periode?.NamaPeriode || "Periode"}.xlsx`);
+
+      return workbook.xlsx.write(res);
+    }
+
+    return res.json({
+      success: true,
+      title: `Laporan Rekapitulasi - ${periode?.NamaPeriode || ""}`,
+      columns: ["NIK", "Nama", ...kpis.map((k) => k.NamaKpi), "Skor", "Ranking"],
+      data
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
 }
 
 module.exports = {
