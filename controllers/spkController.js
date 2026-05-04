@@ -750,6 +750,7 @@ async function getIndividualReportHandler(req, res) {
 
     if (format === "pdf") {
       const pdfDoc = await PDFDocument.create();
+      // Use StandardFonts without embedding to avoid potential path issues in some environments
       const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
       const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
       let page = pdfDoc.addPage([595.28, 841.89]); // A4
@@ -768,20 +769,38 @@ async function getIndividualReportHandler(req, res) {
 
       yPos -= 25;
       data.forEach((item, idx) => {
+        // Ensure values are strings
+        const kriteria = String(item.Kriteria || "");
+        const nilai = String(item.Nilai || 0);
+        const satuan = String(item.Satuan || "");
+
         page.drawText(`${idx + 1}`, { x: 50, y: yPos, size: 10, font });
-        page.drawText(`${item.Kriteria}`, { x: 80, y: yPos, size: 10, font });
-        page.drawText(`${item.Nilai} ${item.Satuan}`, { x: 450, y: yPos, size: 10, font });
+        page.drawText(kriteria, { x: 80, y: yPos, size: 10, font });
+        page.drawText(`${nilai} ${satuan}`, { x: 450, y: yPos, size: 10, font });
         yPos -= 20;
+
+        // Add new page if needed
+        if (yPos < 150) {
+          page = pdfDoc.addPage([595.28, 841.89]);
+          yPos = height - 50;
+        }
       });
 
       page.drawLine({ start: { x: 50, y: yPos + 10 }, end: { x: 545, y: yPos + 10 }, thickness: 1 });
       yPos -= 20;
       if (result) {
-        page.drawText(`Hasil Akhir: ${result.NilaiOptimasi.toFixed(4)}`, { x: 50, y: yPos, size: 11, font: fontBold });
-        page.drawText(`Ranking: ${result.Ranking}`, { x: 450, y: yPos, size: 11, font: fontBold });
+        const score = typeof result.NilaiOptimasi === "number" ? result.NilaiOptimasi.toFixed(4) : "0";
+        page.drawText(`Hasil Akhir: ${score}`, { x: 50, y: yPos, size: 11, font: fontBold });
+        page.drawText(`Ranking: ${result.Ranking || "-"}`, { x: 450, y: yPos, size: 11, font: fontBold });
       }
 
       yPos -= 80;
+      // Protection for footer position
+      if (yPos < 100) {
+        page = pdfDoc.addPage([595.28, 841.89]);
+        yPos = height - 100;
+      }
+
       page.drawText("Mengetahui,", { x: 50, y: yPos, size: 11, font });
       page.drawText("Disetujui Oleh,", { x: 380, y: yPos, size: 11, font });
       yPos -= 60;
@@ -792,8 +811,8 @@ async function getIndividualReportHandler(req, res) {
 
       const pdfBytes = await pdfDoc.save();
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename=Report_${employee?.name || "User"}.pdf`);
-      return res.send(Buffer.from(pdfBytes));
+      res.setHeader("Content-Disposition", `attachment; filename="Report_${employee?.name || "User"}.pdf"`);
+      return res.end(Buffer.from(pdfBytes));
     }
 
     return res.json({
@@ -883,9 +902,10 @@ async function getSummaryReportHandler(req, res) {
       worksheet.getRow(1).alignment = { vertical: "middle", horizontal: "center" };
 
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-      res.setHeader("Content-Disposition", `attachment; filename=Rekap_${periode?.NamaPeriode || "Periode"}.xlsx`);
+      res.setHeader("Content-Disposition", `attachment; filename="Rekap_${periode?.NamaPeriode || "Periode"}.xlsx"`);
 
-      return workbook.xlsx.write(res);
+      await workbook.xlsx.write(res);
+      return res.end();
     }
 
     return res.json({
