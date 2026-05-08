@@ -211,7 +211,7 @@ async function updateKpiWeights(periodeId, weightByKpiId) {
   await Promise.all(promises);
 }
 
-async function replaceEvaluations(periodeId, evals) {
+async function replaceEvaluations(periodeId, evals, createdBy = null) {
   const employeeIds = [...new Set(evals.map((x) => x.KaryawanId))];
   if (employeeIds.length > 0) {
     const placeholders = employeeIds.map(() => "?").join(",");
@@ -222,13 +222,13 @@ async function replaceEvaluations(periodeId, evals) {
   }
 
   if (!evals.length) return;
-  const valuesSql = evals.map(() => "(?, ?, ?, ?)").join(",");
-  const params = evals.flatMap((ev) => [ev.KaryawanId, ev.KpiId, ev.PeriodeId, ev.Nilai]);
-  await querySpk(`INSERT INTO penilaians(KaryawanId, KpiId, PeriodeId, Nilai) VALUES ${valuesSql}`, params);
+  const valuesSql = evals.map(() => "(?, ?, ?, ?, ?)").join(",");
+  const params = evals.flatMap((ev) => [ev.KaryawanId, ev.KpiId, ev.PeriodeId, ev.Nilai, createdBy]);
+  await querySpk(`INSERT INTO penilaians(KaryawanId, KpiId, PeriodeId, Nilai, created_by) VALUES ${valuesSql}`, params);
 }
 
 async function getEvaluationsByPeriode(periodeId) {
-  return querySpk("SELECT Id, KaryawanId, KpiId, PeriodeId, Nilai FROM penilaians WHERE PeriodeId = ?", [periodeId]);
+  return querySpk("SELECT Id, KaryawanId, KpiId, PeriodeId, Nilai, created_at, created_by FROM penilaians WHERE PeriodeId = ?", [periodeId]);
 }
 
 async function clearHasilAkhir(periodeId) {
@@ -259,9 +259,11 @@ async function getEmployeesByIds(employeeIds) {
   if (!employeeIds.length) return [];
   const placeholders = employeeIds.map(() => "?").join(",");
   const rows = await queryMitra(
-    `SELECT id, name, email, nik, departemen_id, lokasikerja
-     FROM employees
-     WHERE id IN (${placeholders})`,
+    `SELECT e.id, e.name, e.email, e.nik, e.departemen_id, e.lokasikerja,
+            j.nama AS jabatan_nama
+     FROM employees e
+     LEFT JOIN jabatans j ON j.id = e.jabatan_id
+     WHERE e.id IN (${placeholders})`,
     employeeIds
   );
   return rows.map((row) => ({
@@ -291,11 +293,13 @@ async function getDepartmentById(id) {
 async function getEmployees({ deptId, lokasiKerja }) {
   let sql = `SELECT e.id, e.name, e.email, e.nik, e.departemen_id, e.lokasikerja,
                     d.name AS department_name, wl.id AS work_location_id,
-                    wl.name AS work_location_name, u.id AS user_id, u.role
+                    wl.name AS work_location_name, u.id AS user_id, u.role,
+                    j.nama AS jabatan_nama
              FROM employees e
              LEFT JOIN users u ON u.email = e.email
              LEFT JOIN departemens d ON d.id = e.departemen_id
              LEFT JOIN work_locations wl ON wl.name = e.lokasikerja
+             LEFT JOIN jabatans j ON j.id = e.jabatan_id
              WHERE e.status_kerja = 'aktif'`;
   const params = [];
   if (deptId) {
@@ -327,9 +331,11 @@ async function getWorkLocations({ status }) {
 
 async function getEmployeeByUserId(userId) {
   const rows = await queryMitra(
-    `SELECT u.id AS user_id, u.role, e.id AS employee_id, e.name, e.email, e.lokasikerja
+    `SELECT u.id AS user_id, u.role, e.id AS employee_id, e.name, e.email, e.lokasikerja,
+            j.nama AS jabatan_nama
      FROM users u
      LEFT JOIN employees e ON e.email = u.email
+     LEFT JOIN jabatans j ON j.id = e.jabatan_id
      WHERE u.id = ?
      LIMIT 1`,
     [userId]

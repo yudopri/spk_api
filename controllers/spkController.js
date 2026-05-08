@@ -502,7 +502,7 @@ async function inputPenilaianHandler(req, res) {
     }
   }
 
-  await replaceEvaluations(periodeId, evals);
+  await replaceEvaluations(periodeId, evals, Number(req.user?.sub || 0));
   await logActivity(req, "CREATE/UPDATE", "MooraPenilaian", { PeriodeId: periodeId, Count: evals.length });
   return res.json({ success: true, message: "Data penilaian MOORA berhasil disimpan" });
 }
@@ -749,11 +749,33 @@ async function getIndividualReportHandler(req, res) {
     const summary = await getHasilAkhirByPeriode(Number(periode_id));
     const result = summary.find((s) => Number(s.KaryawanId) === Number(karyawan_id));
 
+    // Get Approval / Audit data for signature
+    let bypassPimpinan = null;
+    if (periode.Status === "final") {
+      const logs = await getAuditLogs({ limit: 100, offset: 0 });
+      // Find the most recent "UPDATE" on "Periode" for this specific periodeId where Status was likely set to final
+      const updateLog = logs.rows.find(
+        (l) => l.Action === "UPDATE" && l.EntityName === "Periode" && String(JSON.parse(l.Details || "{}").Id) === String(periode_id)
+      );
+
+      if (updateLog) {
+        const pimpinanUser = await getEmployeeByUserId(updateLog.UserId);
+        if (pimpinanUser) {
+          bypassPimpinan = {
+            nama: pimpinanUser.name || "N/A",
+            jabatan: pimpinanUser.jabatan_nama || pimpinanUser.role || "Pimpinan",
+            tanggal: updateLog.CreatedAt
+          };
+        }
+      }
+    }
+
     if (format === "pdf") {
       const pdfDoc = await PDFDocument.create();
       // Use StandardFonts without embedding to avoid potential path issues in some environments
       const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
       const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+      const fontItalic = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
       let page = pdfDoc.addPage([595.28, 841.89]); // A4
       const { width, height } = page.getSize();
 
@@ -781,7 +803,7 @@ async function getIndividualReportHandler(req, res) {
         yPos -= 20;
 
         // Add new page if needed
-        if (yPos < 150) {
+        if (yPos < 200) {
           page = pdfDoc.addPage([595.28, 841.89]);
           yPos = height - 50;
         }
@@ -797,22 +819,29 @@ async function getIndividualReportHandler(req, res) {
 
       yPos -= 80;
       // Protection for footer position
-      if (yPos < 100) {
+      if (yPos < 150) {
         page = pdfDoc.addPage([595.28, 841.89]);
-        yPos = height - 100;
+        yPos = height - 50;
       }
 
-      page.drawText("Mengetahui,", { x: 50, y: yPos, size: 11, font });
-      page.drawText("Disetujui Oleh,", { x: 380, y: yPos, size: 11, font });
-      yPos -= 60;
-      page.drawText("(.................................)", { x: 50, y: yPos, size: 11, font });
-      page.drawText("(.................................)", { x: 380, y: yPos, size: 11, font });
-      page.drawText("Kepala Divisi", { x: 85, y: yPos - 15, size: 10, font });
-      page.drawText("Pimpinan", { x: 425, y: yPos - 15, size: 10, font });
+      const signatureY = yPos;
+      const tglStr = bypassPimpinan ? new Date(bypassPimpinan.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }) : "....................";
+
+      page.drawText(`Balikpapan, ${tglStr}`, { x: 350, y: signatureY + 20, size: 10, font });
+      page.drawText("Manager / Pimpinan,", { x: 350, y: signatureY, size: 10, font });
+
+      if (bypassPimpinan) {
+        page.drawText("Digitally Signed", { x: 350, y: signatureY - 25, size: 8, font: fontItalic, color: rgb(0.5, 0.5, 0.5) });
+        page.drawText(bypassPimpinan.nama, { x: 350, y: signatureY - 50, size: 10, font: fontBold });
+        page.drawText(bypassPimpinan.jabatan, { x: 350, y: signatureY - 65, size: 9, font });
+      } else {
+        page.drawText("( ................................... )", { x: 350, y: signatureY - 60, size: 10, font });
+        page.drawText("Pimpinan", { x: 350, y: signatureY - 75, size: 9, font });
+      }
 
       const pdfBytes = await pdfDoc.save();
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="Report_${employee?.name || "User"}.pdf"`);
+      res.setHeader("Content-Disposition", `attachment; filename="Report_${employee?.name || "Karyawan"}.pdf"`);
       return res.end(Buffer.from(pdfBytes));
     }
 
@@ -822,8 +851,10 @@ async function getIndividualReportHandler(req, res) {
         Nama: employee?.name || "N/A",
         NIK: employee?.nik || "N/A",
         Periode: periode?.NamaPeriode || "N/A",
-        Tahun: periode?.Tahun || "N/A"
+        Tahun: periode?.Tahun || "N/A",
+        Status: periode?.Status
       },
+      pimpinan: bypassPimpinan,
       rincian: data,
       kesimpulan: result
         ? {
