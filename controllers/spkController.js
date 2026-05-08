@@ -17,6 +17,7 @@ const {
   replaceEvaluations,
   clearHasilAkhir,
   insertHasilAkhirBatch,
+  updateHasilAkhirApproval,
   getHasilAkhirByPeriode,
   getEmployeesByIds,
   getDepartments,
@@ -217,6 +218,15 @@ async function updatePeriodeHandler(req, res) {
 
   if (req.user?.role === "Kadiv") {
     payload.DivisiId = Number(req.user?.dept_id || 0) || existing.DivisiId;
+  }
+
+  // Jika status berubah menjadi 'final', set approved_by di tabel hasil_akhir
+  if (payload.Status === "final" && existing.Status !== "final") {
+    const managerId = Number(req.user?.sub || 0);
+    await updateHasilAkhirApproval(periodeId, managerId);
+  } else if (payload.Status === "Draft") {
+    // Reset approved_by jika dikembalikan ke Draft
+    await updateHasilAkhirApproval(periodeId, null);
   }
 
   await updatePeriode(periodeId, {
@@ -569,8 +579,9 @@ async function calculateMooraHandler(req, res) {
   }));
 
   const insertChunks = chunkArray(resultRows, Number(process.env.INSERT_BATCH_SIZE || 500));
+  const createdBy = Number(req.user?.sub || 0);
   for (const resultChunk of insertChunks) {
-    await insertHasilAkhirBatch(resultChunk);
+    await insertHasilAkhirBatch(resultChunk, createdBy);
   }
 
   await logActivity(req, "CALCULATE", "MooraResult", { PeriodeId: periodeId, Count: resultRows.length });
@@ -581,16 +592,27 @@ function decryptNikSync(nik) {
   if (!nik) return null;
   const value = String(nik);
   if (!value.startsWith("eyJ")) return value;
+
   const key = getLaravelKey();
   if (!key) return value;
+
   try {
-    const payload = JSON.parse(Buffer.from(value, "base64").toString("utf8"));
+    const payloadBuffer = Buffer.from(value, "base64");
+    const payloadStr = payloadBuffer.toString("utf8");
+    if (!payloadStr.trim().startsWith("{")) return value;
+
+    const payload = JSON.parse(payloadStr);
+    if (!payload.value || !payload.iv) return value;
+
     const iv = Buffer.from(payload.iv, "base64");
+    if (iv.length !== 16) return value;
+
     const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
     let decrypted = decipher.update(payload.value, "base64", "utf8");
     decrypted += decipher.final("utf8");
     return decrypted;
-  } catch (_) {
+  } catch (err) {
+    // console.error('Decryption error:', err.message);
     return value;
   }
 }
@@ -660,44 +682,71 @@ async function getDepartmentsHandler(req, res) {
 }
 
 async function getEmployeesHandler(req, res) {
-  const rows = await getEmployees({
-    deptId: req.query.dept_id || null,
-    lokasiKerja: req.query.lokasi_kerja || null
-  });
+  try {
+    const rows = await getEmployees({
+      deptId: req.query.dept_id || null,
+      lokasiKerja: req.query.lokasi_kerja || null
+    });
 
-  let filteredRows = [...rows];
-  if (canOnlyViewSelfEmployee(req.user?.role)) {
-    const actor = await getEmployeeByUserId(Number(req.user?.sub || 0));
-    const actorEmployeeId = Number(actor?.employee_id || req.user?.employee_id || 0);
-    filteredRows = filteredRows.filter((u) => Number(u.id) === actorEmployeeId);
+    let filteredRows = [...rows];
+    
+    // 1. Filter Role Group (Management/Staff)
+    const includeManagementRoles = String(req.query.include_management_roles || "false").toLowerCase() === "true";
+    if (!includeManagementRoles) {
+      filteredRows = filteredRows.filter((u) => classifyRoleGroup(u.role) !== "management");
+    }
+
+    if (req.query.role_group) {
+      const roleGroup = String(req.query.role_group).toLowerCase();
+      filteredRows = filteredRows.filter((u) => classifyRoleGroup(u.role) === roleGroup);
+    }
+
+    // 2. Filter Akses Berdasarkan Role (Division/Self)
+    if (!isFullAccessRole(req.user?.role) && !isDevRole(req.user?.role)) {
+      if (canOnlyViewOwnDivision(req.user?.role)) {
+        const actorDeptId = Number(req.user?.dept_id || 0);
+        if (actorDeptId) {
+          filteredRows = filteredRows.filter((u) => Number(u.departemen_id) === actorDeptId);
+        }
+      }
+      if (canOnlyViewSelfEmployee(req.user?.role)) {
+        const actorEmployeeId = Number(req.user?.employee_id || 0);
+        if (actorEmployeeId) {
+          filteredRows = filteredRows.filter((u) => Number(u.id) === actorEmployeeId);
+        }
+      }
+    }
+
+    // 3. Mapping & Dekripsi (Hanya pada data yang sudah difilter agar ringan)
+    const mapped = filteredRows.map((u) => {
+      let decryptedNik = u.nik;
+      try {
+        decryptedNik = decryptNikSync(u.nik);
+      } catch (e) {
+        // Fallback jika dekripsi gagal
+      }
+
+      return {
+        id: u.id,
+        name: u.name,
+        nik: decryptedNik,
+        email: u.email,
+        departemen_id: u.departemen_id,
+        department_name: u.department_name,
+        lokasi_kerja: u.lokasikerja || null,
+        work_location_id: u.work_location_id || null,
+        work_location_name: u.work_location_name || null,
+        user_id: u.user_id,
+        role: u.role,
+        role_group: classifyRoleGroup(u.role)
+      };
+    });
+
+    return res.json(mapped);
+  } catch (err) {
+    console.error("GET EMPLOYEES ERROR:", err);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
-
-  const includeManagementRoles = String(req.query.include_management_roles || "false").toLowerCase() === "true";
-  if (!includeManagementRoles) {
-    filteredRows = filteredRows.filter((u) => classifyRoleGroup(u.role) !== "management");
-  }
-
-  if (req.query.role_group) {
-    const roleGroup = String(req.query.role_group).toLowerCase();
-    filteredRows = filteredRows.filter((u) => classifyRoleGroup(u.role) === roleGroup);
-  }
-
-  const mapped = filteredRows.map((u) => ({
-    id: u.id,
-    name: u.name,
-    nik: decryptNikSync(u.nik),
-    email: u.email,
-    departemen_id: u.departemen_id,
-    department_name: u.department_name,
-    lokasi_kerja: u.lokasikerja || null,
-    work_location_id: u.work_location_id || null,
-    work_location_name: u.work_location_name || null,
-    user_id: u.user_id,
-    role: u.role,
-    role_group: classifyRoleGroup(u.role)
-  }));
-
-  return res.json(mapped);
 }
 
 async function getWorkLocationsHandler(req, res) {
@@ -770,21 +819,34 @@ async function getIndividualReportHandler(req, res) {
 
     // Get Approval / Audit data for signature
     let bypassPimpinan = null;
-    if (periode.Status === "final") {
-      const logs = await getAuditLogs({ limit: 100, offset: 0 });
-      // Find the most recent "UPDATE" on "Periode" for this specific periodeId where Status was likely set to final
-      const updateLog = logs.rows.find(
-        (l) => l.Action === "UPDATE" && l.EntityName === "Periode" && String(JSON.parse(l.Details || "{}").Id) === String(periode_id)
-      );
-
-      if (updateLog) {
-        const pimpinanUser = await getEmployeeByUserId(updateLog.UserId);
+    if (periode.Status === "final" && result) {
+      if (result.approved_by) {
+        const pimpinanUser = await getEmployeeByUserId(result.approved_by);
         if (pimpinanUser) {
           bypassPimpinan = {
             nama: pimpinanUser.name || "N/A",
             jabatan: pimpinanUser.jabatan_nama || pimpinanUser.role || "Pimpinan",
-            tanggal: updateLog.CreatedAt
+            tanggal: periode.UpdatedAt || new Date()
           };
+        }
+      }
+
+      // Fallback ke Audit Log jika approved_by di hasil_akhir masih kosong
+      if (!bypassPimpinan) {
+        const logs = await getAuditLogs({ limit: 100, offset: 0 });
+        const updateLog = logs.rows.find(
+          (l) => l.Action === "UPDATE" && l.EntityName === "Periode" && String(JSON.parse(l.Details || "{}").Id) === String(periode_id)
+        );
+
+        if (updateLog) {
+          const pimpinanUser = await getEmployeeByUserId(updateLog.UserId);
+          if (pimpinanUser) {
+            bypassPimpinan = {
+              nama: pimpinanUser.name || "N/A",
+              jabatan: pimpinanUser.jabatan_nama || pimpinanUser.role || "Pimpinan",
+              tanggal: updateLog.CreatedAt
+            };
+          }
         }
       }
     }
@@ -800,7 +862,7 @@ async function getIndividualReportHandler(req, res) {
 
       page.drawText("FORM PENILAIAN KARYAWAN", { x: 50, y: height - 50, size: 16, font: fontBold });
       page.drawText(`Nama: ${employee?.name || "N/A"}`, { x: 50, y: height - 80, size: 12, font });
-      page.drawText(`NIK: ${employee?.nik || "N/A"}`, { x: 50, y: height - 100, size: 12, font });
+      page.drawText(`NIK: ${decryptNikSync(employee?.nik)}`, { x: 50, y: height - 100, size: 12, font });
       page.drawText(`Periode: ${periode?.NamaPeriode || "N/A"} ${periode?.Tahun || ""}`, { x: 50, y: height - 120, size: 12, font });
 
       let yPos = height - 160;
@@ -917,7 +979,7 @@ async function getSummaryReportHandler(req, res) {
     const data = results.map((res) => {
       const emp = empMap.get(Number(res.KaryawanId));
       const row = {
-        NIK: emp?.nik || "N/A",
+        NIK: decryptNikSync(emp?.nik),
         Nama: emp?.name || "N/A",
         Ranking: res.Ranking,
         Skor: res.NilaiOptimasi

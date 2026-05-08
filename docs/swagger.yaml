@@ -208,7 +208,11 @@ paths:
 
   /api/spk/periode/{id}:
     put:
-      summary: Update period
+      summary: Update period & Approval Manager
+      description: |
+        Update data periode. 
+        Jika status diubah menjadi 'final', kolom 'approved_by' pada hasil_akhir akan otomatis terisi dengan ID Manager yang login.
+        Jika status dikembalikan ke 'Draft', kolom 'approved_by' akan di-reset menjadi NULL.
       tags: [Master Data]
       security: [{ bearerAuth: [] }]
       parameters:
@@ -221,9 +225,11 @@ paths:
           application/json:
             schema:
               type: object
+              properties:
+                Status: { type: string, enum: [Draft, final], description: "Set 'final' to approve" }
       responses:
         '200':
-          description: Updated
+          description: Updated & Approval status synchronized
     delete:
       summary: Delete period
       tags: [Master Data]
@@ -440,7 +446,10 @@ paths:
 
   /api/spk/moora/calculate/{periode_id}:
     post:
-      summary: Execute MOORA ranking
+      summary: Execute MOORA ranking & Set Created By
+      description: |
+        Menjalankan perhitungan perankingan MOORA. 
+        Otomatis mengisi kolom 'created_by' pada hasil akhir dengan ID User yang login (Kadiv/Admin).
       tags: [MOORA]
       security: [{ bearerAuth: [] }]
       parameters:
@@ -450,11 +459,14 @@ paths:
           schema: { type: integer }
       responses:
         '200':
-          description: Ranking calculated
+          description: Ranking calculated & created_by recorded
 
   /api/spk/moora/hasil/{periode_id}:
     get:
-      summary: Get MOORA result per period
+      summary: Get MOORA result & Signature Info
+      description: |
+        Mengambil hasil perankingan. 
+        Mencakup informasi 'created_by' (Kadiv yang input) dan 'approved_by' (Manager yang approve).
       tags: [MOORA]
       security: [{ bearerAuth: [] }]
       parameters:
@@ -467,7 +479,7 @@ paths:
           schema: { type: string }
       responses:
         '200':
-          description: Ranked hasil_akhir data
+          description: Ranked hasil_akhir data with tracking info
           content:
             application/json:
               schema:
