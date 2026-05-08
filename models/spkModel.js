@@ -420,5 +420,7 @@ module.exports = {
   getEmployeeLocationsByIds,
   getDistinctKaryawanIdsByPeriode,
   getEvaluationChunk,
-  getAuditLogs
+  getAuditLogs,
+  queryMitra,
+  querySpk
 };

@@ -28,7 +28,8 @@ const {
   getDistinctKaryawanIdsByPeriode,
   getEvaluationChunk,
   getEvaluationsByPeriode,
-  getAuditLogs
+  getAuditLogs,
+  queryMitra
 } = require("../models/spkModel");
 const { querySpk } = require("../config/db");
 const { calculateAHP, buildMooraCoeffMap, scoreMooraChunk } = require("../services/spkMath");
