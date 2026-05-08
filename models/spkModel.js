@@ -235,33 +235,19 @@ async function clearHasilAkhir(periodeId) {
   await querySpk("DELETE FROM hasil_akhir WHERE PeriodeId = ?", [periodeId]);
 }
 
-async function insertHasilAkhirBatch(rows, createdBy = null) {
+async function insertHasilAkhirBatch(rows) {
   if (!rows.length) return;
-  const valuesSql = rows.map(() => "(?, ?, ?, ?, ?, ?)").join(",");
-  const params = rows.flatMap((row) => [
-    row.KaryawanId,
-    row.PeriodeId,
-    row.NilaiOptimasi,
-    row.NilaiSkala,
-    row.Ranking,
-    createdBy
-  ]);
+  const valuesSql = rows.map(() => "(?, ?, ?, ?, ?)").join(",");
+  const params = rows.flatMap((row) => [row.KaryawanId, row.PeriodeId, row.NilaiOptimasi, row.NilaiSkala, row.Ranking]);
   await querySpk(
-    `INSERT INTO hasil_akhir(KaryawanId, PeriodeId, NilaiOptimasi, NilaiSkala, Ranking, created_by) VALUES ${valuesSql}`,
+    `INSERT INTO hasil_akhir(KaryawanId, PeriodeId, NilaiOptimasi, NilaiSkala, Ranking) VALUES ${valuesSql}`,
     params
-  );
-}
-
-async function updateHasilAkhirApproval(periodeId, approvedBy) {
-  await querySpk(
-    `UPDATE hasil_akhir SET approved_by = ? WHERE PeriodeId = ?`,
-    [approvedBy, periodeId]
   );
 }
 
 async function getHasilAkhirByPeriode(periodeId) {
   return querySpk(
-    `SELECT h.Id, h.KaryawanId, h.PeriodeId, h.NilaiOptimasi, h.NilaiSkala, h.Ranking, h.created_by, h.approved_by
+    `SELECT h.Id, h.KaryawanId, h.PeriodeId, h.NilaiOptimasi, h.NilaiSkala, h.Ranking
      FROM hasil_akhir h
      WHERE h.PeriodeId = ?
      ORDER BY h.Ranking ASC`,
@@ -273,11 +259,9 @@ async function getEmployeesByIds(employeeIds) {
   if (!employeeIds.length) return [];
   const placeholders = employeeIds.map(() => "?").join(",");
   const rows = await queryMitra(
-    `SELECT e.id, e.name, e.email, e.nik, e.departemen_id, e.lokasikerja,
-            j.nama AS jabatan_nama
-     FROM employees e
-     LEFT JOIN jabatans j ON j.id = e.jabatan_id
-     WHERE e.id IN (${placeholders})`,
+    `SELECT id, name, email, nik, departemen_id, lokasikerja
+     FROM employees
+     WHERE id IN (${placeholders})`,
     employeeIds
   );
   return rows.map((row) => ({
@@ -307,13 +291,11 @@ async function getDepartmentById(id) {
 async function getEmployees({ deptId, lokasiKerja }) {
   let sql = `SELECT e.id, e.name, e.email, e.nik, e.departemen_id, e.lokasikerja,
                     d.name AS department_name, wl.id AS work_location_id,
-                    wl.name AS work_location_name, u.id AS user_id, u.role,
-                    j.nama AS jabatan_nama
+                    wl.name AS work_location_name, u.id AS user_id, u.role
              FROM employees e
              LEFT JOIN users u ON u.email = e.email
              LEFT JOIN departemens d ON d.id = e.departemen_id
              LEFT JOIN work_locations wl ON wl.name = e.lokasikerja
-             LEFT JOIN jabatans j ON j.id = e.jabatan_id
              WHERE e.status_kerja = 'aktif'`;
   const params = [];
   if (deptId) {
@@ -345,11 +327,9 @@ async function getWorkLocations({ status }) {
 
 async function getEmployeeByUserId(userId) {
   const rows = await queryMitra(
-    `SELECT u.id AS user_id, u.role, e.id AS employee_id, e.name, e.email, e.lokasikerja,
-            j.nama AS jabatan_nama
+    `SELECT u.id AS user_id, u.role, e.id AS employee_id, e.name, e.email, e.lokasikerja
      FROM users u
      LEFT JOIN employees e ON e.email = u.email
-     LEFT JOIN jabatans j ON j.id = e.jabatan_id
      WHERE u.id = ?
      LIMIT 1`,
     [userId]
@@ -423,7 +403,6 @@ module.exports = {
   clearHasilAkhir,
   insertHasilAkhirBatch,
   getHasilAkhirByPeriode,
-  updateHasilAkhirApproval,
   getEmployeesByIds,
   getDepartments,
   getDepartmentById,
