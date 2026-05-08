@@ -597,31 +597,50 @@ async function getMooraResultHandler(req, res) {
 
   const rows = await getHasilAkhirByPeriode(periodeId);
   const employeeIds = [...new Set(rows.map((row) => row.KaryawanId))];
-  const employees = await getEmployeesByIds(employeeIds);
+
+  // Tambahkan pimpinanId dari baris pertama (karena periode yang sama pimpinannya sama)
+  const managerId = rows.length > 0 ? rows[0].approved_by : null;
+  const createdById = rows.length > 0 ? rows[0].created_by : null;
+
+  if (managerId) {
+    employeeIds.push(managerId);
+  }
+  if (createdById) {
+    employeeIds.push(createdById);
+  }
+
+  const employees = await getEmployeesByIds([...new Set(employeeIds)]);
   const employeeMap = new Map(employees.map((emp) => [Number(emp.id), emp]));
 
-  let data = await Promise.all(rows.map(async (row) => {
-    const employee = employeeMap.get(Number(row.KaryawanId));
-    const decryptedNik = employee ? await decryptNikValue(employee.nik) : null;
-    return {
-      Id: row.Id,
-      KaryawanId: row.KaryawanId,
-      PeriodeId: row.PeriodeId,
-      NilaiOptimasi: row.NilaiOptimasi,
-      NilaiSkala: row.NilaiSkala,
-      Ranking: row.Ranking,
-      Karyawan: employee
-        ? {
-            id: employee.id,
-            name: employee.name,
-            email: employee.email,
-            nik: decryptedNik,
-            departemen_id: employee.departemen_id,
-            lokasi_kerja: employee.lokasikerja || null
-          }
-        : null
-    };
-  }));
+  const managerEmp = managerId ? employeeMap.get(managerId) : null;
+  const creatorEmp = createdById ? employeeMap.get(createdById) : null;
+
+  let data = await Promise.all(
+    rows.map(async (row) => {
+      const employee = employeeMap.get(Number(row.KaryawanId));
+      const decryptedNik = employee ? await decryptNikValue(employee.nik) : null;
+      return {
+        Id: row.Id,
+        KaryawanId: row.KaryawanId,
+        PeriodeId: row.PeriodeId,
+        NilaiOptimasi: row.NilaiOptimasi,
+        NilaiSkala: row.NilaiSkala,
+        Ranking: row.Ranking,
+        created_by: row.created_by,
+        approved_by: row.approved_by,
+        Karyawan: employee
+          ? {
+              id: employee.id,
+              name: employee.name,
+              email: employee.email,
+              nik: decryptedNik,
+              departemen_id: employee.departemen_id,
+              lokasi_kerja: employee.lokasikerja || null
+            }
+          : null
+      };
+    })
+  );
 
   if (canOnlyViewOwnDivision(req.user?.role) || canOnlyViewSelfEmployee(req.user?.role)) {
     const deptId = Number(req.user?.dept_id || 0);
@@ -634,7 +653,25 @@ async function getMooraResultHandler(req, res) {
   }
 
   await logActivity(req, "VIEW", "MooraResult", { PeriodeId: periodeId, Count: data.length });
-  return res.json({ success: true, data });
+
+  return res.json({
+    success: true,
+    pimpinan: managerEmp
+      ? {
+          id: managerEmp.id,
+          nama: managerEmp.name,
+          jabatan: managerEmp.jabatan_nama || "Manager"
+        }
+      : null,
+    pembuat: creatorEmp
+      ? {
+          id: creatorEmp.id,
+          nama: creatorEmp.name,
+          jabatan: creatorEmp.jabatan_nama || "Kadiv"
+        }
+      : null,
+    data
+  });
 }
 
 async function getDepartmentsHandler(req, res) {

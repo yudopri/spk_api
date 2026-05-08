@@ -467,7 +467,49 @@ paths:
           schema: { type: string }
       responses:
         '200':
-          description: Ranked hasil_akhir data
+          description: Ranked hasil_akhir data with approval metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  pimpinan:
+                    type: object
+                    nullable: true
+                    properties:
+                      id: { type: integer }
+                      nama: { type: string }
+                      jabatan: { type: string }
+                  pembuat:
+                    type: object
+                    nullable: true
+                    properties:
+                      id: { type: integer }
+                      nama: { type: string }
+                      jabatan: { type: string }
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        Id: { type: integer }
+                        KaryawanId: { type: integer }
+                        PeriodeId: { type: integer }
+                        NilaiOptimasi: { type: number }
+                        NilaiSkala: { type: number }
+                        Ranking: { type: integer }
+                        created_by: { type: integer, nullable: true }
+                        approved_by: { type: integer, nullable: true }
+                        Karyawan:
+                          type: object
+                          properties:
+                            id: { type: integer }
+                            name: { type: string }
+                            email: { type: string }
+                            nik: { type: string }
+                            departemen_id: { type: integer }
+                            lokasi_kerja: { type: string, nullable: true }
 
   /api/spk/report/individual/{periode_id}/{karyawan_id}:
     get:
