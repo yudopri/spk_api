@@ -764,22 +764,24 @@ async function getIndividualReportHandler(req, res) {
     if (result) {
       if (result.created_by) {
         const signers = await queryMitra(
-          `SELECT e.name, j.name as jabatan
-           FROM employees e
-           LEFT JOIN users u ON e.id = u.employee_id
+          `SELECT e.name, j.name AS jabatan
+           FROM users u
+           LEFT JOIN employees e ON e.email = u.email
            LEFT JOIN jabatans j ON e.jabatan_id = j.id
-           WHERE u.id = ? LIMIT 1`,
+           WHERE u.id = ?
+           LIMIT 1`,
           [result.created_by]
         );
         createdByInfo = signers[0] || null;
       }
       if (result.approved_by) {
         const signers = await queryMitra(
-          `SELECT e.name, j.name as jabatan
-           FROM employees e
-           LEFT JOIN users u ON e.id = u.employee_id
+          `SELECT e.name, j.name AS jabatan
+           FROM users u
+           LEFT JOIN employees e ON e.email = u.email
            LEFT JOIN jabatans j ON e.jabatan_id = j.id
-           WHERE u.id = ? LIMIT 1`,
+           WHERE u.id = ?
+           LIMIT 1`,
           [result.approved_by]
         );
         approvedByInfo = signers[0] || null;
@@ -866,13 +868,17 @@ async function getIndividualReportHandler(req, res) {
         Nama: employee?.name || "N/A",
         NIK: employee?.nik || "N/A",
         Periode: periode?.NamaPeriode || "N/A",
-        Tahun: periode?.Tahun || "N/A"
+        Tahun: periode?.Tahun || "N/A",
+        DibuatOleh: createdByInfo ? `${createdByInfo.name} (${createdByInfo.jabatan || "Kepala Divisi"})` : "N/A",
+        DisetujuiOleh: approvedByInfo ? `${approvedByInfo.name} (${approvedByInfo.jabatan || "Pimpinan"})` : "N/A",
+        Status: result?.status || "Draft"
       },
       rincian: data,
       kesimpulan: result
         ? {
             Ranking: result.Ranking,
-            Skor: result.NilaiOptimasi
+            Skor: result.NilaiOptimasi,
+            Status: result.status
           }
         : null
     });
