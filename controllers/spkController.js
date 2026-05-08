@@ -766,8 +766,9 @@ async function getIndividualReportHandler(req, res) {
         const signers = await queryMitra(
           `SELECT e.name, j.name as jabatan
            FROM employees e
+           LEFT JOIN users u ON e.id = u.employee_id
            LEFT JOIN jabatans j ON e.jabatan_id = j.id
-           WHERE e.user_id = ? LIMIT 1`,
+           WHERE u.id = ? LIMIT 1`,
           [result.created_by]
         );
         createdByInfo = signers[0] || null;
@@ -776,8 +777,9 @@ async function getIndividualReportHandler(req, res) {
         const signers = await queryMitra(
           `SELECT e.name, j.name as jabatan
            FROM employees e
+           LEFT JOIN users u ON e.id = u.employee_id
            LEFT JOIN jabatans j ON e.jabatan_id = j.id
-           WHERE e.user_id = ? LIMIT 1`,
+           WHERE u.id = ? LIMIT 1`,
           [result.approved_by]
         );
         approvedByInfo = signers[0] || null;
