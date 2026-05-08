@@ -281,7 +281,8 @@ async function getEmployeesByIds(employeeIds) {
     employeeIds
   );
   return rows.map((row) => ({
-    ...row
+    ...row,
+    nik: decryptLaravelNik(row.nik)
   }));
 }
 
@@ -326,7 +327,8 @@ async function getEmployees({ deptId, lokasiKerja }) {
   sql += " ORDER BY e.id ASC";
   const rows = await queryMitra(sql, params);
   return rows.map((row) => ({
-    ...row
+    ...row,
+    nik: decryptLaravelNik(row.nik)
   }));
 }
 

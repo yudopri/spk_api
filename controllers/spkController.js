@@ -615,32 +615,29 @@ async function getMooraResultHandler(req, res) {
   const managerEmp = managerId ? employeeMap.get(managerId) : null;
   const creatorEmp = createdById ? employeeMap.get(createdById) : null;
 
-  let data = await Promise.all(
-    rows.map(async (row) => {
-      const employee = employeeMap.get(Number(row.KaryawanId));
-      const decryptedNik = employee ? await decryptNikValue(employee.nik) : null;
-      return {
-        Id: row.Id,
-        KaryawanId: row.KaryawanId,
-        PeriodeId: row.PeriodeId,
-        NilaiOptimasi: row.NilaiOptimasi,
-        NilaiSkala: row.NilaiSkala,
-        Ranking: row.Ranking,
-        created_by: row.created_by,
-        approved_by: row.approved_by,
-        Karyawan: employee
-          ? {
-              id: employee.id,
-              name: employee.name,
-              email: employee.email,
-              nik: decryptedNik,
-              departemen_id: employee.departemen_id,
-              lokasi_kerja: employee.lokasikerja || null
-            }
-          : null
-      };
-    })
-  );
+  let data = rows.map((row) => {
+    const employee = employeeMap.get(Number(row.KaryawanId));
+    return {
+      Id: row.Id,
+      KaryawanId: row.KaryawanId,
+      PeriodeId: row.PeriodeId,
+      NilaiOptimasi: row.NilaiOptimasi,
+      NilaiSkala: row.NilaiSkala,
+      Ranking: row.Ranking,
+      created_by: row.created_by,
+      approved_by: row.approved_by,
+      Karyawan: employee
+        ? {
+            id: employee.id,
+            name: employee.name,
+            email: employee.email,
+            nik: employee.nik,
+            departemen_id: employee.departemen_id,
+            lokasi_kerja: employee.lokasikerja || null
+          }
+        : null
+    };
+  });
 
   if (canOnlyViewOwnDivision(req.user?.role) || canOnlyViewSelfEmployee(req.user?.role)) {
     const deptId = Number(req.user?.dept_id || 0);
@@ -709,22 +706,20 @@ async function getEmployeesHandler(req, res) {
     filteredRows = filteredRows.filter((u) => classifyRoleGroup(u.role) === roleGroup);
   }
 
-  const mapped = await Promise.all(
-    filteredRows.map(async (u) => ({
-      id: u.id,
-      name: u.name,
-      nik: await decryptNikValue(u.nik),
-      email: u.email,
-      departemen_id: u.departemen_id,
-      department_name: u.department_name,
-      lokasi_kerja: u.lokasikerja || null,
-      work_location_id: u.work_location_id || null,
-      work_location_name: u.work_location_name || null,
-      user_id: u.user_id,
-      role: u.role,
-      role_group: classifyRoleGroup(u.role)
-    }))
-  );
+  const mapped = filteredRows.map((u) => ({
+    id: u.id,
+    name: u.name,
+    nik: u.nik,
+    email: u.email,
+    departemen_id: u.departemen_id,
+    department_name: u.department_name,
+    lokasi_kerja: u.lokasikerja || null,
+    work_location_id: u.work_location_id || null,
+    work_location_name: u.work_location_name || null,
+    user_id: u.user_id,
+    role: u.role,
+    role_group: classifyRoleGroup(u.role)
+  }));
 
   return res.json(mapped);
 }
