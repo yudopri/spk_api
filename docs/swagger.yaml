@@ -468,6 +468,32 @@ paths:
       responses:
         '200':
           description: Ranked hasil_akhir data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        Id: { type: integer }
+                        KaryawanId: { type: integer }
+                        PeriodeId: { type: integer }
+                        NilaiOptimasi: { type: number }
+                        NilaiSkala: { type: number }
+                        Ranking: { type: integer }
+                        Karyawan:
+                          type: object
+                          properties:
+                            id: { type: integer }
+                            name: { type: string }
+                            email: { type: string }
+                            nik: { type: string }
+                            departemen_id: { type: integer }
+                            lokasi_kerja: { type: string, nullable: true }
 
   /api/spk/report/individual/{periode_id}/{karyawan_id}:
     get:
@@ -489,6 +515,45 @@ paths:
       responses:
         '200':
           description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  metadata:
+                    type: object
+                    properties:
+                      Nama: { type: string }
+                      NIK: { type: string }
+                      Periode: { type: string }
+                      Tahun: { type: integer }
+                      Status: { type: string }
+                  pimpinan:
+                    type: object
+                    nullable: true
+                    properties:
+                      nama: { type: string }
+                      jabatan: { type: string }
+                      tanggal: { type: string, format: date-time }
+                  rincian:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        Kriteria: { type: string }
+                        Nilai: { type: number }
+                        Satuan: { type: string }
+                  kesimpulan:
+                    type: object
+                    nullable: true
+                    properties:
+                      Ranking: { type: integer }
+                      Skor: { type: number }
+            application/pdf:
+              schema:
+                type: string
+                format: binary
 
   /api/spk/report/summary/{periode_id}:
     get:

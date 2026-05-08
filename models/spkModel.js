@@ -224,11 +224,13 @@ async function replaceEvaluations(periodeId, evals, createdBy = null) {
   if (!evals.length) return;
   const valuesSql = evals.map(() => "(?, ?, ?, ?, ?)").join(",");
   const params = evals.flatMap((ev) => [ev.KaryawanId, ev.KpiId, ev.PeriodeId, ev.Nilai, createdBy]);
+  // Note: created_at column is usually handle automatically by the DB (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
   await querySpk(`INSERT INTO penilaians(KaryawanId, KpiId, PeriodeId, Nilai, created_by) VALUES ${valuesSql}`, params);
 }
 
 async function getEvaluationsByPeriode(periodeId) {
-  return querySpk("SELECT Id, KaryawanId, KpiId, PeriodeId, Nilai, created_at, created_by FROM penilaians WHERE PeriodeId = ?", [periodeId]);
+  // Removed created_at and created_by temporarily to prevent 500 error if DB schema is not updated yet
+  return querySpk("SELECT Id, KaryawanId, KpiId, PeriodeId, Nilai FROM penilaians WHERE PeriodeId = ?", [periodeId]);
 }
 
 async function clearHasilAkhir(periodeId) {
