@@ -17,6 +17,7 @@ const {
   replaceEvaluations,
   clearHasilAkhir,
   insertHasilAkhirBatch,
+  updateHasilAkhirApproval,
   getHasilAkhirByPeriode,
   getEmployeesByIds,
   getDepartments,
@@ -217,6 +218,15 @@ async function updatePeriodeHandler(req, res) {
 
   if (req.user?.role === "Kadiv") {
     payload.DivisiId = Number(req.user?.dept_id || 0) || existing.DivisiId;
+  }
+
+  // Konsep Approval: Jika status berubah menjadi 'final', atur approved_by
+  if (payload.Status === "final" && existing.Status !== "final") {
+    const managerId = Number(req.user?.sub || 0);
+    await updateHasilAkhirApproval(periodeId, managerId);
+  } else if (payload.Status === "Draft") {
+    // Reset approved_by jika dikembalikan ke Draft
+    await updateHasilAkhirApproval(periodeId, null);
   }
 
   await updatePeriode(periodeId, {
@@ -569,8 +579,9 @@ async function calculateMooraHandler(req, res) {
   }));
 
   const insertChunks = chunkArray(resultRows, Number(process.env.INSERT_BATCH_SIZE || 500));
+  const createdBy = Number(req.user?.sub || 0);
   for (const resultChunk of insertChunks) {
-    await insertHasilAkhirBatch(resultChunk);
+    await insertHasilAkhirBatch(resultChunk, createdBy);
   }
 
   await logActivity(req, "CALCULATE", "MooraResult", { PeriodeId: periodeId, Count: resultRows.length });
@@ -749,11 +760,25 @@ async function getIndividualReportHandler(req, res) {
     const summary = await getHasilAkhirByPeriode(Number(periode_id));
     const result = summary.find((s) => Number(s.KaryawanId) === Number(karyawan_id));
 
+    // Get Approval data
+    let bypassPimpinan = null;
+    if (periode.Status === "final" && result?.approved_by) {
+      const pimpinanUser = await getEmployeeByUserId(result.approved_by);
+      if (pimpinanUser) {
+        bypassPimpinan = {
+          nama: pimpinanUser.name || "N/A",
+          jabatan: pimpinanUser.jabatan_nama || pimpinanUser.role || "Pimpinan",
+          tanggal: toIso(periode.UpdatedAt || new Date())
+        };
+      }
+    }
+
     if (format === "pdf") {
       const pdfDoc = await PDFDocument.create();
       // Use StandardFonts without embedding to avoid potential path issues in some environments
       const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
       const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+      const fontItalic = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
       let page = pdfDoc.addPage([595.28, 841.89]); // A4
       const { width, height } = page.getSize();
 
@@ -804,9 +829,17 @@ async function getIndividualReportHandler(req, res) {
 
       page.drawText("Mengetahui,", { x: 50, y: yPos, size: 11, font });
       page.drawText("Disetujui Oleh,", { x: 380, y: yPos, size: 11, font });
-      yPos -= 60;
+      yPos -= 50;
+
+      if (bypassPimpinan) {
+        page.drawText("Digitally Signed", { x: 380, y: yPos + 15, size: 8, font: fontItalic, color: rgb(0.5, 0.5, 0.5) });
+        page.drawText(bypassPimpinan.nama, { x: 380, y: yPos, size: 11, font: fontBold });
+        page.drawText(bypassPimpinan.jabatan, { x: 380, y: yPos - 15, size: 9, font });
+      } else {
+        page.drawText("(.................................)", { x: 380, y: yPos, size: 11, font });
+      }
+
       page.drawText("(.................................)", { x: 50, y: yPos, size: 11, font });
-      page.drawText("(.................................)", { x: 380, y: yPos, size: 11, font });
       page.drawText("Kepala Divisi", { x: 85, y: yPos - 15, size: 10, font });
       page.drawText("Pimpinan", { x: 425, y: yPos - 15, size: 10, font });
 
@@ -822,13 +855,15 @@ async function getIndividualReportHandler(req, res) {
         Nama: employee?.name || "N/A",
         NIK: employee?.nik || "N/A",
         Periode: periode?.NamaPeriode || "N/A",
-        Tahun: periode?.Tahun || "N/A"
+        Tahun: periode?.Tahun || "N/A",
+        Status: periode?.Status
       },
+      pimpinan: bypassPimpinan,
       rincian: data,
       kesimpulan: result
         ? {
             Ranking: result.Ranking,
-            Skor: result.NilaiOptimasi
+            Skor: result.Value || result.NilaiOptimasi
           }
         : null
     });

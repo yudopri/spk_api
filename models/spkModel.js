@@ -235,19 +235,39 @@ async function clearHasilAkhir(periodeId) {
   await querySpk("DELETE FROM hasil_akhir WHERE PeriodeId = ?", [periodeId]);
 }
 
-async function insertHasilAkhirBatch(rows) {
+async function insertHasilAkhirBatch(rows, createdBy = null) {
   if (!rows.length) return;
-  const valuesSql = rows.map(() => "(?, ?, ?, ?, ?)").join(",");
-  const params = rows.flatMap((row) => [row.KaryawanId, row.PeriodeId, row.NilaiOptimasi, row.NilaiSkala, row.Ranking]);
+  const valuesSql = rows.map(() => "(?, ?, ?, ?, ?, ?)").join(",");
+  const params = rows.flatMap((row) => [
+    row.KaryawanId,
+    row.PeriodeId,
+    row.NilaiOptimasi,
+    row.NilaiSkala,
+    row.Ranking,
+    createdBy
+  ]);
   await querySpk(
-    `INSERT INTO hasil_akhir(KaryawanId, PeriodeId, NilaiOptimasi, NilaiSkala, Ranking) VALUES ${valuesSql}`,
+    `INSERT INTO hasil_akhir(KaryawanId, PeriodeId, NilaiOptimasi, NilaiSkala, Ranking, created_by) VALUES ${valuesSql}`,
     params
+  );
+}
+
+async function updateHasilAkhirApproval(periodeId, approvedBy) {
+  await querySpk(
+    `UPDATE hasil_akhir SET approved_by = ? WHERE PeriodeId = ?`,
+    [approvedBy, periodeId]
   );
 }
 
 async function getHasilAkhirByPeriode(periodeId) {
   return querySpk(
-    `SELECT h.Id, h.KaryawanId, h.PeriodeId, h.NilaiOptimasi, h.NilaiSkala, h.Ranking
+    `SELECT h.Id, h.KaryawanId, h.PeriodeId, h.NilaiOptimasi, h.NilaiSkala, h.Ranking, h.created_by, h.approved_by
+     FROM hasil_akhir h
+     WHERE h.PeriodeId = ?
+     ORDER BY h.Ranking ASC`,
+    [periodeId]
+  );
+}
      FROM hasil_akhir h
      WHERE h.PeriodeId = ?
      ORDER BY h.Ranking ASC`,
@@ -403,6 +423,7 @@ module.exports = {
   clearHasilAkhir,
   insertHasilAkhirBatch,
   getHasilAkhirByPeriode,
+  updateHasilAkhirApproval,
   getEmployeesByIds,
   getDepartments,
   getDepartmentById,
