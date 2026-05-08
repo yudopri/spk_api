@@ -237,17 +237,25 @@ async function clearHasilAkhir(periodeId) {
 
 async function insertHasilAkhirBatch(rows) {
   if (!rows.length) return;
-  const valuesSql = rows.map(() => "(?, ?, ?, ?, ?)").join(",");
-  const params = rows.flatMap((row) => [row.KaryawanId, row.PeriodeId, row.NilaiOptimasi, row.NilaiSkala, row.Ranking]);
+  const valuesSql = rows.map(() => "(?, ?, ?, ?, ?, ?, ?)").join(",");
+  const params = rows.flatMap((row) => [
+    row.KaryawanId,
+    row.PeriodeId,
+    row.NilaiOptimasi,
+    row.NilaiSkala,
+    row.Ranking,
+    row.created_by || null,
+    row.status || "Draft"
+  ]);
   await querySpk(
-    `INSERT INTO hasil_akhir(KaryawanId, PeriodeId, NilaiOptimasi, NilaiSkala, Ranking) VALUES ${valuesSql}`,
+    `INSERT INTO hasil_akhir(KaryawanId, PeriodeId, NilaiOptimasi, NilaiSkala, Ranking, created_by, status) VALUES ${valuesSql}`,
     params
   );
 }
 
 async function getHasilAkhirByPeriode(periodeId) {
   return querySpk(
-    `SELECT h.Id, h.KaryawanId, h.PeriodeId, h.NilaiOptimasi, h.NilaiSkala, h.Ranking
+    `SELECT h.Id, h.KaryawanId, h.PeriodeId, h.NilaiOptimasi, h.NilaiSkala, h.Ranking, h.created_by, h.approved_by, h.status
      FROM hasil_akhir h
      WHERE h.PeriodeId = ?
      ORDER BY h.Ranking ASC`,

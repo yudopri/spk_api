@@ -215,8 +215,13 @@ async function updatePeriodeHandler(req, res) {
     payload.DivisiId = existing.DivisiId;
   }
 
-  if (req.user?.role === "Kadiv") {
-    payload.DivisiId = Number(req.user?.dept_id || 0) || existing.DivisiId;
+  if (payload.Status === "Final" && existing.Status !== "Final") {
+    // Stamp approved_by and set status final for all results in this period
+    const approvedBy = Number(req.user?.sub || 0);
+    await querySpk(
+      "UPDATE hasil_akhir SET approved_by = ?, status = 'Final' WHERE PeriodeId = ?",
+      [approvedBy, periodeId]
+    );
   }
 
   await updatePeriode(periodeId, {
@@ -565,7 +570,9 @@ async function calculateMooraHandler(req, res) {
     PeriodeId: periodeId,
     NilaiOptimasi: row.yi,
     NilaiSkala: Math.round(row.yi * 10000) / 100,
-    Ranking: index + 1
+    Ranking: index + 1,
+    created_by: Number(req.user?.sub || 0),
+    status: "Draft"
   }));
 
   const insertChunks = chunkArray(resultRows, Number(process.env.INSERT_BATCH_SIZE || 500));
@@ -749,6 +756,33 @@ async function getIndividualReportHandler(req, res) {
     const summary = await getHasilAkhirByPeriode(Number(periode_id));
     const result = summary.find((s) => Number(s.KaryawanId) === Number(karyawan_id));
 
+    // Fetch Signer Information cross-DB if result exists
+    let createdByInfo = null;
+    let approvedByInfo = null;
+
+    if (result) {
+      if (result.created_by) {
+        const signers = await queryMitra(
+          `SELECT e.name, j.name as jabatan
+           FROM employees e
+           LEFT JOIN jabatans j ON e.jabatan_id = j.id
+           WHERE e.user_id = ? LIMIT 1`,
+          [result.created_by]
+        );
+        createdByInfo = signers[0] || null;
+      }
+      if (result.approved_by) {
+        const signers = await queryMitra(
+          `SELECT e.name, j.name as jabatan
+           FROM employees e
+           LEFT JOIN jabatans j ON e.jabatan_id = j.id
+           WHERE e.user_id = ? LIMIT 1`,
+          [result.approved_by]
+        );
+        approvedByInfo = signers[0] || null;
+      }
+    }
+
     if (format === "pdf") {
       const pdfDoc = await PDFDocument.create();
       // Use StandardFonts without embedding to avoid potential path issues in some environments
@@ -805,10 +839,17 @@ async function getIndividualReportHandler(req, res) {
       page.drawText("Mengetahui,", { x: 50, y: yPos, size: 11, font });
       page.drawText("Disetujui Oleh,", { x: 380, y: yPos, size: 11, font });
       yPos -= 60;
-      page.drawText("(.................................)", { x: 50, y: yPos, size: 11, font });
-      page.drawText("(.................................)", { x: 380, y: yPos, size: 11, font });
-      page.drawText("Kepala Divisi", { x: 85, y: yPos - 15, size: 10, font });
-      page.drawText("Pimpinan", { x: 425, y: yPos - 15, size: 10, font });
+      
+      const creatorName = createdByInfo ? (createdByInfo.name || ".................................") : ".................................";
+      const creatorJabatan = createdByInfo ? (createdByInfo.jabatan || "Kepala Divisi") : "Kepala Divisi";
+      
+      const approverName = approvedByInfo ? (approvedByInfo.name || ".................................") : ".................................";
+      const approverJabatan = approvedByInfo ? (approvedByInfo.jabatan || "Pimpinan") : "Pimpinan";
+
+      page.drawText(`( ${creatorName} )`, { x: 50, y: yPos, size: 11, font });
+      page.drawText(`( ${approverName} )`, { x: 380, y: yPos, size: 11, font });
+      page.drawText(creatorJabatan, { x: 50, y: yPos - 15, size: 10, font });
+      page.drawText(approverJabatan, { x: 380, y: yPos - 15, size: 10, font });
 
       const pdfBytes = await pdfDoc.save();
       res.setHeader("Content-Type", "application/pdf");
