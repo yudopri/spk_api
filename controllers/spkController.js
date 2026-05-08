@@ -17,7 +17,6 @@ const {
   replaceEvaluations,
   clearHasilAkhir,
   insertHasilAkhirBatch,
-  updateHasilAkhirApproval,
   getHasilAkhirByPeriode,
   getEmployeesByIds,
   getDepartments,
@@ -218,15 +217,6 @@ async function updatePeriodeHandler(req, res) {
 
   if (req.user?.role === "Kadiv") {
     payload.DivisiId = Number(req.user?.dept_id || 0) || existing.DivisiId;
-  }
-
-  // Jika status berubah menjadi 'final', set approved_by di tabel hasil_akhir
-  if (payload.Status === "final" && existing.Status !== "final") {
-    const managerId = Number(req.user?.sub || 0);
-    await updateHasilAkhirApproval(periodeId, managerId);
-  } else if (payload.Status === "Draft") {
-    // Reset approved_by jika dikembalikan ke Draft
-    await updateHasilAkhirApproval(periodeId, null);
   }
 
   await updatePeriode(periodeId, {
@@ -512,7 +502,7 @@ async function inputPenilaianHandler(req, res) {
     }
   }
 
-  await replaceEvaluations(periodeId, evals, Number(req.user?.sub || 0));
+  await replaceEvaluations(periodeId, evals);
   await logActivity(req, "CREATE/UPDATE", "MooraPenilaian", { PeriodeId: periodeId, Count: evals.length });
   return res.json({ success: true, message: "Data penilaian MOORA berhasil disimpan" });
 }
@@ -579,42 +569,12 @@ async function calculateMooraHandler(req, res) {
   }));
 
   const insertChunks = chunkArray(resultRows, Number(process.env.INSERT_BATCH_SIZE || 500));
-  const createdBy = Number(req.user?.sub || 0);
   for (const resultChunk of insertChunks) {
-    await insertHasilAkhirBatch(resultChunk, createdBy);
+    await insertHasilAkhirBatch(resultChunk);
   }
 
   await logActivity(req, "CALCULATE", "MooraResult", { PeriodeId: periodeId, Count: resultRows.length });
   return res.json({ success: true, message: "Perangkingan MOORA selesai" });
-}
-
-function decryptNikSync(nik) {
-  if (!nik) return null;
-  const value = String(nik);
-  if (!value.startsWith("eyJ")) return value;
-
-  const key = getLaravelKey();
-  if (!key) return value;
-
-  try {
-    const payloadBuffer = Buffer.from(value, "base64");
-    const payloadStr = payloadBuffer.toString("utf8");
-    if (!payloadStr.trim().startsWith("{")) return value;
-
-    const payload = JSON.parse(payloadStr);
-    if (!payload.value || !payload.iv) return value;
-
-    const iv = Buffer.from(payload.iv, "base64");
-    if (iv.length !== 16) return value;
-
-    const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
-    let decrypted = decipher.update(payload.value, "base64", "utf8");
-    decrypted += decipher.final("utf8");
-    return decrypted;
-  } catch (err) {
-    // console.error('Decryption error:', err.message);
-    return value;
-  }
 }
 
 async function getMooraResultHandler(req, res) {
@@ -625,16 +585,13 @@ async function getMooraResultHandler(req, res) {
   }
 
   const rows = await getHasilAkhirByPeriode(periodeId);
-  if (!rows.length) {
-    return res.json({ success: true, data: [] });
-  }
-
   const employeeIds = [...new Set(rows.map((row) => row.KaryawanId))];
   const employees = await getEmployeesByIds(employeeIds);
   const employeeMap = new Map(employees.map((emp) => [Number(emp.id), emp]));
 
-  let data = rows.map((row) => {
+  let data = await Promise.all(rows.map(async (row) => {
     const employee = employeeMap.get(Number(row.KaryawanId));
+    const decryptedNik = employee ? await decryptNikValue(employee.nik) : null;
     return {
       Id: row.Id,
       KaryawanId: row.KaryawanId,
@@ -647,13 +604,13 @@ async function getMooraResultHandler(req, res) {
             id: employee.id,
             name: employee.name,
             email: employee.email,
-            nik: decryptNikSync(employee.nik),
+            nik: decryptedNik,
             departemen_id: employee.departemen_id,
             lokasi_kerja: employee.lokasikerja || null
           }
         : null
     };
-  });
+  }));
 
   if (canOnlyViewOwnDivision(req.user?.role) || canOnlyViewSelfEmployee(req.user?.role)) {
     const deptId = Number(req.user?.dept_id || 0);
@@ -682,71 +639,46 @@ async function getDepartmentsHandler(req, res) {
 }
 
 async function getEmployeesHandler(req, res) {
-  try {
-    const rows = await getEmployees({
-      deptId: req.query.dept_id || null,
-      lokasiKerja: req.query.lokasi_kerja || null
-    });
+  const rows = await getEmployees({
+    deptId: req.query.dept_id || null,
+    lokasiKerja: req.query.lokasi_kerja || null
+  });
 
-    let filteredRows = [...rows];
-    
-    // 1. Filter Role Group (Management/Staff)
-    const includeManagementRoles = String(req.query.include_management_roles || "false").toLowerCase() === "true";
-    if (!includeManagementRoles) {
-      filteredRows = filteredRows.filter((u) => classifyRoleGroup(u.role) !== "management");
-    }
-
-    if (req.query.role_group) {
-      const roleGroup = String(req.query.role_group).toLowerCase();
-      filteredRows = filteredRows.filter((u) => classifyRoleGroup(u.role) === roleGroup);
-    }
-
-    // 2. Filter Akses Berdasarkan Role (Division/Self)
-    if (!isFullAccessRole(req.user?.role) && !isDevRole(req.user?.role)) {
-      if (canOnlyViewOwnDivision(req.user?.role)) {
-        const actorDeptId = Number(req.user?.dept_id || 0);
-        if (actorDeptId) {
-          filteredRows = filteredRows.filter((u) => Number(u.departemen_id) === actorDeptId);
-        }
-      }
-      if (canOnlyViewSelfEmployee(req.user?.role)) {
-        const actorEmployeeId = Number(req.user?.employee_id || 0);
-        if (actorEmployeeId) {
-          filteredRows = filteredRows.filter((u) => Number(u.id) === actorEmployeeId);
-        }
-      }
-    }
-
-    // 3. Mapping & Dekripsi (Hanya pada data yang sudah difilter agar ringan)
-    const mapped = filteredRows.map((u) => {
-      let decryptedNik = u.nik;
-      try {
-        decryptedNik = decryptNikSync(u.nik);
-      } catch (e) {
-        // Fallback jika dekripsi gagal
-      }
-
-      return {
-        id: u.id,
-        name: u.name,
-        nik: decryptedNik,
-        email: u.email,
-        departemen_id: u.departemen_id,
-        department_name: u.department_name,
-        lokasi_kerja: u.lokasikerja || null,
-        work_location_id: u.work_location_id || null,
-        work_location_name: u.work_location_name || null,
-        user_id: u.user_id,
-        role: u.role,
-        role_group: classifyRoleGroup(u.role)
-      };
-    });
-
-    return res.json(mapped);
-  } catch (err) {
-    console.error("GET EMPLOYEES ERROR:", err);
-    return res.status(500).json({ success: false, message: "Internal Server Error" });
+  let filteredRows = [...rows];
+  if (canOnlyViewSelfEmployee(req.user?.role)) {
+    const actor = await getEmployeeByUserId(Number(req.user?.sub || 0));
+    const actorEmployeeId = Number(actor?.employee_id || req.user?.employee_id || 0);
+    filteredRows = filteredRows.filter((u) => Number(u.id) === actorEmployeeId);
   }
+
+  const includeManagementRoles = String(req.query.include_management_roles || "false").toLowerCase() === "true";
+  if (!includeManagementRoles) {
+    filteredRows = filteredRows.filter((u) => classifyRoleGroup(u.role) !== "management");
+  }
+
+  if (req.query.role_group) {
+    const roleGroup = String(req.query.role_group).toLowerCase();
+    filteredRows = filteredRows.filter((u) => classifyRoleGroup(u.role) === roleGroup);
+  }
+
+  const mapped = await Promise.all(
+    filteredRows.map(async (u) => ({
+      id: u.id,
+      name: u.name,
+      nik: await decryptNikValue(u.nik),
+      email: u.email,
+      departemen_id: u.departemen_id,
+      department_name: u.department_name,
+      lokasi_kerja: u.lokasikerja || null,
+      work_location_id: u.work_location_id || null,
+      work_location_name: u.work_location_name || null,
+      user_id: u.user_id,
+      role: u.role,
+      role_group: classifyRoleGroup(u.role)
+    }))
+  );
+
+  return res.json(mapped);
 }
 
 async function getWorkLocationsHandler(req, res) {
@@ -817,52 +749,17 @@ async function getIndividualReportHandler(req, res) {
     const summary = await getHasilAkhirByPeriode(Number(periode_id));
     const result = summary.find((s) => Number(s.KaryawanId) === Number(karyawan_id));
 
-    // Get Approval / Audit data for signature
-    let bypassPimpinan = null;
-    if (periode.Status === "final" && result) {
-      if (result.approved_by) {
-        const pimpinanUser = await getEmployeeByUserId(result.approved_by);
-        if (pimpinanUser) {
-          bypassPimpinan = {
-            nama: pimpinanUser.name || "N/A",
-            jabatan: pimpinanUser.jabatan_nama || pimpinanUser.role || "Pimpinan",
-            tanggal: periode.UpdatedAt || new Date()
-          };
-        }
-      }
-
-      // Fallback ke Audit Log jika approved_by di hasil_akhir masih kosong
-      if (!bypassPimpinan) {
-        const logs = await getAuditLogs({ limit: 100, offset: 0 });
-        const updateLog = logs.rows.find(
-          (l) => l.Action === "UPDATE" && l.EntityName === "Periode" && String(JSON.parse(l.Details || "{}").Id) === String(periode_id)
-        );
-
-        if (updateLog) {
-          const pimpinanUser = await getEmployeeByUserId(updateLog.UserId);
-          if (pimpinanUser) {
-            bypassPimpinan = {
-              nama: pimpinanUser.name || "N/A",
-              jabatan: pimpinanUser.jabatan_nama || pimpinanUser.role || "Pimpinan",
-              tanggal: updateLog.CreatedAt
-            };
-          }
-        }
-      }
-    }
-
     if (format === "pdf") {
       const pdfDoc = await PDFDocument.create();
       // Use StandardFonts without embedding to avoid potential path issues in some environments
       const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
       const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-      const fontItalic = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
       let page = pdfDoc.addPage([595.28, 841.89]); // A4
       const { width, height } = page.getSize();
 
       page.drawText("FORM PENILAIAN KARYAWAN", { x: 50, y: height - 50, size: 16, font: fontBold });
       page.drawText(`Nama: ${employee?.name || "N/A"}`, { x: 50, y: height - 80, size: 12, font });
-      page.drawText(`NIK: ${decryptNikSync(employee?.nik)}`, { x: 50, y: height - 100, size: 12, font });
+      page.drawText(`NIK: ${employee?.nik || "N/A"}`, { x: 50, y: height - 100, size: 12, font });
       page.drawText(`Periode: ${periode?.NamaPeriode || "N/A"} ${periode?.Tahun || ""}`, { x: 50, y: height - 120, size: 12, font });
 
       let yPos = height - 160;
@@ -884,7 +781,7 @@ async function getIndividualReportHandler(req, res) {
         yPos -= 20;
 
         // Add new page if needed
-        if (yPos < 200) {
+        if (yPos < 150) {
           page = pdfDoc.addPage([595.28, 841.89]);
           yPos = height - 50;
         }
@@ -900,29 +797,22 @@ async function getIndividualReportHandler(req, res) {
 
       yPos -= 80;
       // Protection for footer position
-      if (yPos < 150) {
+      if (yPos < 100) {
         page = pdfDoc.addPage([595.28, 841.89]);
-        yPos = height - 50;
+        yPos = height - 100;
       }
 
-      const signatureY = yPos;
-      const tglStr = bypassPimpinan ? new Date(bypassPimpinan.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }) : "....................";
-
-      page.drawText(`Balikpapan, ${tglStr}`, { x: 350, y: signatureY + 20, size: 10, font });
-      page.drawText("Manager / Pimpinan,", { x: 350, y: signatureY, size: 10, font });
-
-      if (bypassPimpinan) {
-        page.drawText("Digitally Signed", { x: 350, y: signatureY - 25, size: 8, font: fontItalic, color: rgb(0.5, 0.5, 0.5) });
-        page.drawText(bypassPimpinan.nama, { x: 350, y: signatureY - 50, size: 10, font: fontBold });
-        page.drawText(bypassPimpinan.jabatan, { x: 350, y: signatureY - 65, size: 9, font });
-      } else {
-        page.drawText("( ................................... )", { x: 350, y: signatureY - 60, size: 10, font });
-        page.drawText("Pimpinan", { x: 350, y: signatureY - 75, size: 9, font });
-      }
+      page.drawText("Mengetahui,", { x: 50, y: yPos, size: 11, font });
+      page.drawText("Disetujui Oleh,", { x: 380, y: yPos, size: 11, font });
+      yPos -= 60;
+      page.drawText("(.................................)", { x: 50, y: yPos, size: 11, font });
+      page.drawText("(.................................)", { x: 380, y: yPos, size: 11, font });
+      page.drawText("Kepala Divisi", { x: 85, y: yPos - 15, size: 10, font });
+      page.drawText("Pimpinan", { x: 425, y: yPos - 15, size: 10, font });
 
       const pdfBytes = await pdfDoc.save();
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="Report_${employee?.name || "Karyawan"}.pdf"`);
+      res.setHeader("Content-Disposition", `attachment; filename="Report_${employee?.name || "User"}.pdf"`);
       return res.end(Buffer.from(pdfBytes));
     }
 
@@ -932,10 +822,8 @@ async function getIndividualReportHandler(req, res) {
         Nama: employee?.name || "N/A",
         NIK: employee?.nik || "N/A",
         Periode: periode?.NamaPeriode || "N/A",
-        Tahun: periode?.Tahun || "N/A",
-        Status: periode?.Status
+        Tahun: periode?.Tahun || "N/A"
       },
-      pimpinan: bypassPimpinan,
       rincian: data,
       kesimpulan: result
         ? {
@@ -979,7 +867,7 @@ async function getSummaryReportHandler(req, res) {
     const data = results.map((res) => {
       const emp = empMap.get(Number(res.KaryawanId));
       const row = {
-        NIK: decryptNikSync(emp?.nik),
+        NIK: emp?.nik || "N/A",
         Nama: emp?.name || "N/A",
         Ranking: res.Ranking,
         Skor: res.NilaiOptimasi
