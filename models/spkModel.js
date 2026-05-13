@@ -255,11 +255,37 @@ async function insertHasilAkhirBatch(rows) {
 
 async function getHasilAkhirByPeriode(periodeId) {
   return querySpk(
-    `SELECT h.Id, h.KaryawanId, h.PeriodeId, h.NilaiOptimasi, h.NilaiSkala, h.Ranking, h.created_by, h.approved_by, h.status
+    `SELECT h.Id, h.KaryawanId, h.PeriodeId, h.NilaiOptimasi, h.NilaiSkala, h.Ranking, h.created_by, h.approved_by, h.status, h.catatan
      FROM hasil_akhir h
      WHERE h.PeriodeId = ?
      ORDER BY h.Ranking ASC`,
     [periodeId]
+  );
+}
+
+async function updateHasilAkhirStatus(id, { status, catatan, approved_by }) {
+  const fields = [];
+  const params = [];
+
+  if (status !== undefined) {
+    fields.push("status = ?");
+    params.push(status);
+  }
+  if (catatan !== undefined) {
+    fields.push("catatan = ?");
+    params.push(catatan);
+  }
+  if (approved_by !== undefined) {
+    fields.push("approved_by = ?");
+    params.push(approved_by);
+  }
+
+  if (fields.length === 0) return;
+
+  params.push(id);
+  await querySpk(
+    `UPDATE hasil_akhir SET ${fields.join(", ")} WHERE Id = ?`,
+    params
   );
 }
 
@@ -420,7 +446,9 @@ module.exports = {
   getEmployeeLocationsByIds,
   getDistinctKaryawanIdsByPeriode,
   getEvaluationChunk,
+  getEvaluationsByPeriode,
   getAuditLogs,
+  updateHasilAkhirStatus,
   queryMitra,
   querySpk
 };

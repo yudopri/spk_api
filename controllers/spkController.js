@@ -217,6 +217,17 @@ async function updatePeriodeHandler(req, res) {
   }
 
   if (payload.Status === "Final" && existing.Status !== "Final") {
+    // Pastikan semua hasil_akhir sudah direview (Status = Reviewed atau Final)
+    const records = await getHasilAkhirByPeriode(periodeId);
+    const hasUnreviewed = records.some(r => r.status === "Pending" || r.status === "Draft");
+    
+    if (hasUnreviewed) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Tidak bisa finalisasi. Masih ada karyawan yang belum direview." 
+      });
+    }
+
     // Stamp approved_by and set status final for all results in this period
     const approvedBy = Number(req.user?.sub || 0);
     await querySpk(
@@ -607,6 +618,8 @@ async function getMooraResultHandler(req, res) {
       NilaiOptimasi: row.NilaiOptimasi,
       NilaiSkala: row.NilaiSkala,
       Ranking: row.Ranking,
+      status: row.status,
+      catatan: row.catatan,
       Karyawan: employee
         ? {
             id: employee.id,
@@ -973,6 +986,20 @@ async function getSummaryReportHandler(req, res) {
   }
 }
 
+async function updateHasilReviewHandler(req, res) {
+  const { id } = req.params;
+  const { status, catatan } = req.body;
+
+  if (!["Draft", "Pending", "Reviewed"].includes(status)) {
+    return res.status(400).json({ success: false, message: "Status tidak valid. Gunakan Draft, Pending, atau Reviewed." });
+  }
+
+  await updateHasilAkhirStatus(id, { status, catatan });
+  await logActivity(req, "REVIEW", "MooraResult", { Id: id, Status: status, Catatan: catatan });
+  
+  return res.json({ success: true, message: "Review berhasil disimpan" });
+}
+
 module.exports = {
   getPeriodeHandler,
   createPeriodeHandler,
@@ -991,6 +1018,7 @@ module.exports = {
   inputPenilaianHandler,
   calculateMooraHandler,
   getMooraResultHandler,
+  updateHasilReviewHandler,
   getIndividualReportHandler,
   getSummaryReportHandler,
   getDepartmentsHandler,

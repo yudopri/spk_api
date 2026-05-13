@@ -14,6 +14,7 @@ const {
   inputPenilaianHandler,
   calculateMooraHandler,
   getMooraResultHandler,
+  updateHasilReviewHandler,
   getIndividualReportHandler,
   getSummaryReportHandler
 } = require("../controllers/spkController");
@@ -39,6 +40,7 @@ router.post("/ahp/calculate-weight/:periode_id", authenticateToken, hasPermissio
 router.post("/moora/penilaian", authenticateToken, hasPermission("score_input"), inputPenilaianHandler);
 router.post("/moora/calculate/:periode_id", authenticateToken, hasPermission("spk_calculate"), calculateMooraHandler);
 router.get("/moora/hasil/:periode_id", authenticateToken, hasPermission("spk_view"), getMooraResultHandler);
+router.patch("/moora/hasil/:id/review", authenticateToken, hasPermission("spk_calculate"), updateHasilReviewHandler);
 
 // Reports
 router.get("/report/individual/:periode_id/:karyawan_id", authenticateToken, hasPermission("spk_view"), getIndividualReportHandler);

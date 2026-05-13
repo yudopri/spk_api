@@ -501,6 +501,8 @@ paths:
                         Ranking: { type: integer }
                         created_by: { type: integer, nullable: true }
                         approved_by: { type: integer, nullable: true }
+                        status: { type: string }
+                        catatan: { type: string, nullable: true }
                         Karyawan:
                           type: object
                           properties:
@@ -531,6 +533,32 @@ paths:
       responses:
         '200':
           description: OK
+
+  /api/spk/moora/hasil/{id}/review:
+    patch:
+      summary: Review individual MOORA result (Update status and feedback)
+      tags: [MOORA]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID from hasil_akhir table
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { type: string, enum: [Draft, Pending, Reviewed] }
+                catatan: { type: string }
+      responses:
+        '200':
+          description: Review saved success
+        '400':
+          description: Invalid status or pending validation
 
   /api/spk/report/summary/{periode_id}:
     get:
