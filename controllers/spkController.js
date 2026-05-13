@@ -29,6 +29,7 @@ const {
   getEvaluationChunk,
   getEvaluationsByPeriode,
   getAuditLogs,
+  updateHasilAkhirStatus,
   queryMitra
 } = require("../models/spkModel");
 const { querySpk } = require("../config/db");

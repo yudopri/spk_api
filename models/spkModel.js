@@ -8,10 +8,10 @@ function getLaravelKey() {
   return Buffer.from(keyValue, "base64");
 }
 
-function decryptLaravelNik(nik) {
-  if (!nik) return null;
+function decryptLaravelNik(nik_ktp) {
+  if (!nik_ktp) return null;
 
-  const value = String(nik);
+  const value = String(nik_ktp);
   if (!value.startsWith("eyJ")) {
     return value;
   }
@@ -293,7 +293,7 @@ async function getEmployeesByIds(employeeIds) {
   if (!employeeIds.length) return [];
   const placeholders = employeeIds.map(() => "?").join(",");
   const rows = await queryMitra(
-    `SELECT id, name, email, nik, departemen_id, lokasikerja
+    `SELECT id, name, email, nik_ktp, departemen_id, lokasikerja
      FROM employees
      WHERE id IN (${placeholders})`,
     employeeIds
@@ -323,7 +323,7 @@ async function getDepartmentById(id) {
 }
 
 async function getEmployees({ deptId, lokasiKerja }) {
-  let sql = `SELECT e.id, e.name, e.email, e.nik, e.departemen_id, e.lokasikerja,
+  let sql = `SELECT e.id, e.name, e.email, e.nik_ktp, e.departemen_id, e.lokasikerja,
                     d.name AS department_name, wl.id AS work_location_id,
                     wl.name AS work_location_name, u.id AS user_id, u.role
              FROM employees e
@@ -344,7 +344,7 @@ async function getEmployees({ deptId, lokasiKerja }) {
   const rows = await queryMitra(sql, params);
   return rows.map((row) => ({
     ...row,
-    nik: decryptLaravelNik(row.nik)
+    nik_ktp: decryptLaravelNik(row.nik_ktp)
   }));
 }
 
