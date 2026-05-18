@@ -34,10 +34,13 @@ const {
   updateKpiGroup,
   deleteKpiGroup,
   updateHasilAkhirStatus,
+  getGroupComparisons,
+  replaceGroupComparisons,
+  updateGroupWeights,
   queryMitra
 } = require("../models/spkModel");
 const { querySpk } = require("../config/db");
-const { calculateAHP, buildMooraCoeffMap, scoreMooraChunk } = require("../services/spkMath");
+const { calculateAHP, buildMooraCoeffMap, scoreMooraChunk, solveAhpMatrix } = require("../services/spkMath");
 const {
   isAdminAdmViewOnlyRole,
   isEmployeeRole,
@@ -452,6 +455,41 @@ async function deleteKpiGroupHandler(req, res) {
   await deleteKpiGroup(id);
   await logActivity(req, "DELETE", "KpiGroup", { id });
   return res.json({ success: true, message: "Grup KPI berhasil dihapus" });
+}
+
+async function getGroupComparisonsHandler(req, res) {
+  try {
+    const { periode_id } = req.params;
+    const data = await getGroupComparisons(periode_id);
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+async function saveGroupComparisonsHandler(req, res) {
+  try {
+    const { periode_id } = req.params;
+    const { comparisons } = req.body; // [{group_a_id, group_b_id, nilai}]
+
+    // 1. Save raw comparisons
+    await replaceGroupComparisons(periode_id, comparisons.map(c => ({ ...c, periode_id })));
+
+    // 2. Step: Calculate AHP Local Weights for Groups
+    const matrixInput = comparisons.map((c) => [c.group_a_id, c.group_b_id, c.nilai]);
+    const groups = await getKpiGroups(periode_id);
+    const groupIds = groups.map((g) => g.id);
+
+    if (groupIds.length > 0) {
+      const { weights, cr } = solveAhpMatrix(matrixInput, groupIds);
+      await updateGroupWeights(periode_id, weights);
+      res.json({ success: true, cr, weights });
+    } else {
+      res.json({ success: true, message: "Comparisons saved but no groups found" });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 }
 
 async function getComparisonsHandler(req, res) {
@@ -1050,6 +1088,8 @@ module.exports = {
   createKpiGroupHandler,
   updateKpiGroupHandler,
   deleteKpiGroupHandler,
+  getGroupComparisonsHandler,
+  saveGroupComparisonsHandler,
   getAttributesHandler,
   createAttributeHandler,
   deleteAttributeHandler,

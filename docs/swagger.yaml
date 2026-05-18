@@ -434,6 +434,46 @@ paths:
         '200':
           description: Deleted
 
+  /api/spk/ahp-group/perbandingan/{periode_id}:
+    get:
+      summary: Get AHP comparison for KPI groups
+      tags: [SPK Calculation]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: periode_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: List of group comparisons
+    post:
+      summary: Input AHP comparison for KPI groups and calculate local weights
+      tags: [SPK Calculation]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: periode_id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                comparisons:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      group_a_id: { type: integer }
+                      group_b_id: { type: integer }
+                      nilai: { type: number }
+      responses:
+        '200':
+          description: Comparison saved and weights updated
+
   /api/spk/ahp/perbandingan/{periode_id}:
     get:
       summary: Get AHP pairwise comparisons

@@ -12,6 +12,8 @@ const {
   createKpiGroupHandler,
   updateKpiGroupHandler,
   deleteKpiGroupHandler,
+  getGroupComparisonsHandler,
+  saveGroupComparisonsHandler,
   getComparisonsHandler,
   inputComparisonHandler,
   calculateWeightsHandler,
@@ -41,6 +43,9 @@ router.get("/kpi-group", authenticateToken, hasPermission("kpi_view"), getKpiGro
 router.post("/kpi-group", authenticateToken, hasPermission("kpi_manage"), createKpiGroupHandler);
 router.put("/kpi-group/:id", authenticateToken, hasPermission("kpi_manage"), updateKpiGroupHandler);
 router.delete("/kpi-group/:id", authenticateToken, hasPermission("kpi_manage"), deleteKpiGroupHandler);
+
+router.get("/ahp-group/perbandingan/:periode_id", authenticateToken, hasPermission("spk_view"), getGroupComparisonsHandler);
+router.post("/ahp-group/perbandingan/:periode_id", authenticateToken, hasPermission("spk_manage"), saveGroupComparisonsHandler);
 
 router.get("/ahp/perbandingan/:periode_id", authenticateToken, hasPermission("spk_view"), getComparisonsHandler);
 router.post("/ahp/perbandingan", authenticateToken, hasPermission("spk_manage"), inputComparisonHandler);

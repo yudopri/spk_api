@@ -140,11 +140,46 @@ async function deleteKpiGroup(id) {
   await querySpk("DELETE FROM kpi_groups WHERE id = ?", [id]);
 }
 
+async function getGroupComparisons(periodeId) {
+  return querySpk(
+    `SELECT gc.id, gc.periode_id, gc.group_a_id, gc.group_b_id, gc.nilai,
+            ga.nama_grup AS group_a_name, gb.nama_grup AS group_b_name
+     FROM kpi_group_comparisons gc
+     LEFT JOIN kpi_groups ga ON ga.id = gc.group_a_id
+     LEFT JOIN kpi_groups gb ON gb.id = gc.group_b_id
+     WHERE gc.periode_id = ?
+     ORDER BY gc.id ASC`,
+    [periodeId]
+  );
+}
+
+async function replaceGroupComparisons(periodeId, items) {
+  await querySpk("DELETE FROM kpi_group_comparisons WHERE periode_id = ?", [periodeId]);
+  if (!items.length) return;
+
+  const valuesSql = items.map(() => "(?, ?, ?, ?)").join(",");
+  const params = items.flatMap((item) => [item.periode_id, item.group_a_id, item.group_b_id, item.nilai]);
+  await querySpk(
+    `INSERT INTO kpi_group_comparisons(periode_id, group_a_id, group_b_id, nilai) VALUES ${valuesSql}`,
+    params
+  );
+}
+
+async function updateGroupWeights(periodeId, weightByGroupId) {
+  const entries = Object.entries(weightByGroupId);
+  if (entries.length === 0) return;
+
+  const promises = entries.map(([groupId, bobot]) =>
+    querySpk("UPDATE kpi_groups SET bobot_grup = ? WHERE id = ? AND periode_id = ?", [bobot, Number(groupId), periodeId])
+  );
+  await Promise.all(promises);
+}
+
 async function getKpis(periodeId) {
   let sql = `
     SELECT k.Id, k.NamaKpi, k.Tipe, k.BobotAhp, k.PeriodeId, k.attributeId, k.group_id,
            ms.nama AS nama_satuan, ms.simbol AS simbol,
-           kg.nama_grup AS nama_grup
+           kg.nama_grup AS nama_grup, kg.bobot_grup AS bobot_grup
     FROM kpis k
     LEFT JOIN attribute ms ON ms.id = k.attributeId
     LEFT JOIN kpi_groups kg ON kg.id = k.group_id
@@ -162,7 +197,7 @@ async function getKpisByDivision(divisiId, periodeId) {
   let sql =
     `SELECT k.Id, k.NamaKpi, k.Tipe, k.BobotAhp, k.PeriodeId, k.attributeId, k.group_id,
             ms.nama AS nama_satuan, ms.simbol AS simbol,
-            kg.nama_grup AS nama_grup
+            kg.nama_grup AS nama_grup, kg.bobot_grup AS bobot_grup
      FROM kpis k
      JOIN periodes p ON p.Id = k.PeriodeId
      LEFT JOIN attribute ms ON ms.id = k.attributeId
@@ -482,6 +517,9 @@ module.exports = {
   createKpiGroup,
   updateKpiGroup,
   deleteKpiGroup,
+  getGroupComparisons,
+  replaceGroupComparisons,
+  updateGroupWeights,
   updateHasilAkhirStatus,
   queryMitra,
   querySpk

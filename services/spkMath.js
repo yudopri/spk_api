@@ -73,9 +73,13 @@ function buildMooraCoeffMap(kpis, denominatorMap) {
   const coeff = {};
   for (const kpi of kpis) {
     const denominator = denominatorMap[kpi.Id] || 1;
-    const weight = Number(kpi.BobotAhp || 0);
+    // Nilai Global Weight = Bobot Grup * Bobot KPI Dalam Grup
+    const groupWeight = Number(kpi.bobot_grup || 1); // Default 1 jika tidak ada grup
+    const kpiWeight = Number(kpi.BobotAhp || 0);
+    const globalWeight = groupWeight * kpiWeight;
+    
     const sign = String(kpi.Tipe || "benefit").toLowerCase() === "benefit" ? 1 : -1;
-    coeff[kpi.Id] = (weight * sign) / (denominator || 1);
+    coeff[kpi.Id] = (globalWeight * sign) / (denominator || 1);
   }
   return coeff;
 }
