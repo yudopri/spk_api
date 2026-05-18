@@ -303,6 +303,9 @@ async function getKpiHandler(req, res) {
       BobotAhp: k.BobotAhp,
       PeriodeId: k.PeriodeId,
       attributeId: k.attributeId || null,
+      group_id: k.group_id || null,
+      nama_grup: k.nama_grup || null,
+      bobot_grup: k.bobot_grup || 0,
       nama_satuan: k.nama_satuan || null,
       simbol: k.simbol || null
     }))
