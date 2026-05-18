@@ -8,6 +8,10 @@ const {
   createKpiHandler,
   updateKpiHandler,
   deleteKpiHandler,
+  getKpiGroupsHandler,
+  createKpiGroupHandler,
+  updateKpiGroupHandler,
+  deleteKpiGroupHandler,
   getComparisonsHandler,
   inputComparisonHandler,
   calculateWeightsHandler,
@@ -32,6 +36,11 @@ router.get("/kpi", authenticateToken, hasPermission("kpi_view"), getKpiHandler);
 router.post("/kpi", authenticateToken, hasPermission("kpi_manage"), createKpiHandler);
 router.put("/kpi/:id", authenticateToken, hasPermission("kpi_manage"), updateKpiHandler);
 router.delete("/kpi/:id", authenticateToken, hasPermission("kpi_manage"), deleteKpiHandler);
+
+router.get("/kpi-group", authenticateToken, hasPermission("kpi_view"), getKpiGroupsHandler);
+router.post("/kpi-group", authenticateToken, hasPermission("kpi_manage"), createKpiGroupHandler);
+router.put("/kpi-group/:id", authenticateToken, hasPermission("kpi_manage"), updateKpiGroupHandler);
+router.delete("/kpi-group/:id", authenticateToken, hasPermission("kpi_manage"), deleteKpiGroupHandler);
 
 router.get("/ahp/perbandingan/:periode_id", authenticateToken, hasPermission("spk_view"), getComparisonsHandler);
 router.post("/ahp/perbandingan", authenticateToken, hasPermission("spk_manage"), inputComparisonHandler);

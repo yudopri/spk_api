@@ -110,34 +110,63 @@ async function deletePeriode(id) {
   await querySpk("DELETE FROM periodes WHERE Id = ?", [id]);
 }
 
-async function getKpis(periodeId) {
+// KPI Groups
+async function getKpiGroups(periodeId) {
+  let sql = "SELECT id, nama_grup, periode_id, bobot_grup FROM kpi_groups";
+  const params = [];
   if (periodeId) {
-    return querySpk(
-      `SELECT k.Id, k.NamaKpi, k.Tipe, k.BobotAhp, k.PeriodeId, k.attributeId,
-              ms.nama AS nama_satuan, ms.simbol AS simbol
-       FROM kpis k
-       LEFT JOIN attribute ms ON ms.id = k.attributeId
-       WHERE k.PeriodeId = ?
-       ORDER BY k.Id ASC`,
-      [periodeId]
-    );
+    sql += " WHERE periode_id = ?";
+    params.push(periodeId);
   }
-  return querySpk(
-    `SELECT k.Id, k.NamaKpi, k.Tipe, k.BobotAhp, k.PeriodeId, k.attributeId,
-            ms.nama AS nama_satuan, ms.simbol AS simbol
-     FROM kpis k
-     LEFT JOIN attribute ms ON ms.id = k.attributeId
-     ORDER BY k.Id ASC`
+  return querySpk(sql, params);
+}
+
+async function createKpiGroup(data) {
+  const result = await querySpk(
+    "INSERT INTO kpi_groups (nama_grup, periode_id, bobot_grup) VALUES (?, ?, ?)",
+    [data.nama_grup, data.periode_id, data.bobot_grup || 0]
   );
+  return result.insertId;
+}
+
+async function updateKpiGroup(id, data) {
+  await querySpk(
+    "UPDATE kpi_groups SET nama_grup = ?, bobot_grup = ? WHERE id = ?",
+    [data.nama_grup, data.bobot_grup || 0, id]
+  );
+}
+
+async function deleteKpiGroup(id) {
+  await querySpk("DELETE FROM kpi_groups WHERE id = ?", [id]);
+}
+
+async function getKpis(periodeId) {
+  let sql = `
+    SELECT k.Id, k.NamaKpi, k.Tipe, k.BobotAhp, k.PeriodeId, k.attributeId, k.group_id,
+           ms.nama AS nama_satuan, ms.simbol AS simbol,
+           kg.nama_grup AS nama_grup
+    FROM kpis k
+    LEFT JOIN attribute ms ON ms.id = k.attributeId
+    LEFT JOIN kpi_groups kg ON kg.id = k.group_id
+  `;
+  const params = [];
+  if (periodeId) {
+    sql += " WHERE k.PeriodeId = ?";
+    params.push(periodeId);
+  }
+  sql += " ORDER BY k.Id ASC";
+  return querySpk(sql, params);
 }
 
 async function getKpisByDivision(divisiId, periodeId) {
   let sql =
-    `SELECT k.Id, k.NamaKpi, k.Tipe, k.BobotAhp, k.PeriodeId, k.attributeId,
-            ms.nama AS nama_satuan, ms.simbol AS simbol
+    `SELECT k.Id, k.NamaKpi, k.Tipe, k.BobotAhp, k.PeriodeId, k.attributeId, k.group_id,
+            ms.nama AS nama_satuan, ms.simbol AS simbol,
+            kg.nama_grup AS nama_grup
      FROM kpis k
      JOIN periodes p ON p.Id = k.PeriodeId
      LEFT JOIN attribute ms ON ms.id = k.attributeId
+     LEFT JOIN kpi_groups kg ON kg.id = k.group_id
      WHERE (p.DivisiId = ? OR p.DivisiId IS NULL)`;
   const params = [divisiId];
 
@@ -152,9 +181,9 @@ async function getKpisByDivision(divisiId, periodeId) {
 
 async function createKpi(data) {
   const result = await querySpk(
-    `INSERT INTO kpis(NamaKpi, Tipe, PeriodeId, BobotAhp, attributeId)
-     VALUES(?, ?, ?, ?, ?)`,
-    [data.NamaKpi, data.Tipe, data.PeriodeId, data.BobotAhp || 0, data.attributeId || null]
+    `INSERT INTO kpis(NamaKpi, Tipe, PeriodeId, BobotAhp, attributeId, group_id)
+     VALUES(?, ?, ?, ?, ?, ?)`,
+    [data.NamaKpi, data.Tipe, data.PeriodeId, data.BobotAhp || 0, data.attributeId || null, data.group_id || null]
   );
   return result.insertId;
 }
@@ -166,9 +195,10 @@ async function updateKpi(id, data) {
          Tipe = ?,
          PeriodeId = ?,
          attributeId = ?,
-         BobotAhp = ?
+         BobotAhp = ?,
+         group_id = ?
      WHERE Id = ?`,
-    [data.NamaKpi, data.Tipe, data.PeriodeId, data.attributeId || null, data.BobotAhp || 0, id]
+    [data.NamaKpi, data.Tipe, data.PeriodeId, data.attributeId || null, data.BobotAhp || 0, data.group_id || null, id]
   );
 }
 
@@ -448,6 +478,10 @@ module.exports = {
   getEvaluationChunk,
   getEvaluationsByPeriode,
   getAuditLogs,
+  getKpiGroups,
+  createKpiGroup,
+  updateKpiGroup,
+  deleteKpiGroup,
   updateHasilAkhirStatus,
   queryMitra,
   querySpk

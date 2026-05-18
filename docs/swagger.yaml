@@ -333,6 +333,7 @@ paths:
                 PeriodeId: { type: integer }
                 id_satuan: { type: integer, nullable: true }
                 attributeId: { type: integer, nullable: true }
+                group_id: { type: integer, nullable: true }
       responses:
         '200':
           description: Created
@@ -352,11 +353,76 @@ paths:
           application/json:
             schema:
               type: object
+              properties:
+                group_id: { type: integer, nullable: true }
       responses:
         '200':
           description: Updated
     delete:
       summary: Delete KPI
+      tags: [Master Data]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Deleted
+
+  /api/spk/kpi-group:
+    get:
+      summary: Get KPI groups
+      tags: [Master Data]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: periode_id
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          description: List of KPI groups
+    post:
+      summary: Create KPI group
+      tags: [Master Data]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nama_grup: { type: string }
+                periode_id: { type: integer }
+                bobot_grup: { type: number }
+      responses:
+        '200':
+          description: Created
+
+  /api/spk/kpi-group/{id}:
+    put:
+      summary: Update KPI group
+      tags: [Master Data]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nama_grup: { type: string }
+                bobot_grup: { type: number }
+      responses:
+        '200':
+          description: Updated
+    delete:
+      summary: Delete KPI group
       tags: [Master Data]
       security: [{ bearerAuth: [] }]
       parameters:

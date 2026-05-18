@@ -29,6 +29,10 @@ const {
   getEvaluationChunk,
   getEvaluationsByPeriode,
   getAuditLogs,
+  getKpiGroups,
+  createKpiGroup,
+  updateKpiGroup,
+  deleteKpiGroup,
   updateHasilAkhirStatus,
   queryMitra
 } = require("../models/spkModel");
@@ -416,6 +420,38 @@ async function deleteKpiHandler(req, res) {
   await deleteKpi(kpiId);
   await logActivity(req, "DELETE", "Criterion", { Id: kpiId });
   return res.json({ success: true, message: "KPI berhasil dihapus" });
+}
+
+// KPI Groups Handlers
+async function getKpiGroupsHandler(req, res) {
+  const { periode_id } = req.query;
+  const groups = await getKpiGroups(periode_id);
+  return res.json(groups);
+}
+
+async function createKpiGroupHandler(req, res) {
+  const { nama_grup, periode_id, bobot_grup } = req.body;
+  if (!nama_grup || !periode_id) {
+    return res.status(400).json({ success: false, message: "Nama grup dan Periode ID wajib diisi" });
+  }
+  const id = await createKpiGroup({ nama_grup, periode_id, bobot_grup });
+  await logActivity(req, "CREATE", "KpiGroup", { id, nama_grup });
+  return res.json({ success: true, id });
+}
+
+async function updateKpiGroupHandler(req, res) {
+  const { id } = req.params;
+  const { nama_grup, bobot_grup } = req.body;
+  await updateKpiGroup(id, { nama_grup, bobot_grup });
+  await logActivity(req, "UPDATE", "KpiGroup", { id, nama_grup });
+  return res.json({ success: true, message: "Grup KPI berhasil diperbarui" });
+}
+
+async function deleteKpiGroupHandler(req, res) {
+  const { id } = req.params;
+  await deleteKpiGroup(id);
+  await logActivity(req, "DELETE", "KpiGroup", { id });
+  return res.json({ success: true, message: "Grup KPI berhasil dihapus" });
 }
 
 async function getComparisonsHandler(req, res) {
@@ -1010,6 +1046,10 @@ module.exports = {
   createKpiHandler,
   updateKpiHandler,
   deleteKpiHandler,
+  getKpiGroupsHandler,
+  createKpiGroupHandler,
+  updateKpiGroupHandler,
+  deleteKpiGroupHandler,
   getAttributesHandler,
   createAttributeHandler,
   deleteAttributeHandler,
