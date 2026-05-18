@@ -403,7 +403,8 @@ async function updateKpiHandler(req, res) {
     Tipe: payload.Tipe || existing.Tipe,
     PeriodeId: targetPeriodeId,
     attributeId: targetAttributeId,
-    BobotAhp: payload.BobotAhp ?? existing.BobotAhp
+    BobotAhp: payload.BobotAhp ?? existing.BobotAhp,
+    group_id: payload.group_id ?? existing.group_id
   });
 
   await logActivity(req, "UPDATE", "Criterion", { Id: kpiId });
