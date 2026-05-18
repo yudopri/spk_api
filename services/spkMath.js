@@ -94,8 +94,53 @@ function scoreMooraChunk(evaluations, coeffMap) {
   return yiByEmployee;
 }
 
+/**
+ * Solve AHP matrix for a set of elements
+ * @param {Array<[number, number, number]>} comparisons - [[idA, idB, value], ...]
+ * @param {Array<number>} elementIds - Array of unique IDs
+ * @returns {{weights: Object, cr: number}}
+ */
+function solveAhpMatrix(comparisons, elementIds) {
+  const n = elementIds.length;
+  if (n === 0) return { weights: {}, cr: 0 };
+  if (n === 1) return { weights: { [elementIds[0]]: 1.0 }, cr: 0 };
+
+  const matrix = Array.from({ length: n }, () => Array(n).fill(1));
+  const idToIndex = {};
+  elementIds.forEach((id, i) => {
+    idToIndex[id] = i;
+  });
+
+  comparisons.forEach(([idA, idB, val]) => {
+    const i = idToIndex[idA];
+    const j = idToIndex[idB];
+    if (i !== undefined && j !== undefined) {
+      matrix[i][j] = val;
+      matrix[j][i] = val === 0 ? 1 : 1 / val;
+    }
+  });
+
+  const weights = powerIteration(matrix);
+
+  // Consistency Ratio
+  const weightedSum = math.multiply(matrix, weights);
+  const lambdaVector = weightedSum.map((v, idx) => v / (weights[idx] || 1));
+  const lambdaMax = math.mean(lambdaVector);
+  const ci = (lambdaMax - n) / (n - 1);
+  const ri = RI_TABLE[n] || 1.49;
+  const cr = ri === 0 ? 0 : ci / ri;
+
+  const weightResult = {};
+  elementIds.forEach((id, idx) => {
+    weightResult[id] = weights[idx];
+  });
+
+  return { weights: weightResult, cr: cr };
+}
+
 module.exports = {
   calculateAHP,
   buildMooraCoeffMap,
-  scoreMooraChunk
+  scoreMooraChunk,
+  solveAhpMatrix
 };
