@@ -337,8 +337,10 @@ async function updateHasilAkhirStatus(id, { status, catatan, approved_by }) {
     params.push(status);
   }
   if (catatan !== undefined) {
+    // Handle both object and string for catatan
+    const catatanValue = typeof catatan === "object" ? JSON.stringify(catatan) : catatan;
     fields.push("catatan = ?");
-    params.push(catatan);
+    params.push(catatanValue);
   }
   if (approved_by !== undefined) {
     fields.push("approved_by = ?");
