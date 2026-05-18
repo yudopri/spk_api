@@ -690,6 +690,19 @@ async function getMooraResultHandler(req, res) {
   let data = await Promise.all(rows.map(async (row) => {
     const employee = employeeMap.get(Number(row.KaryawanId));
     const decryptedNik = employee ? await decryptNikValue(employee.nik) : null;
+
+    // Parse catatan JSON and handle legacy text
+    let parsedCatatan = { p: "", i: "", s: "" };
+    try {
+      if (row.catatan && row.catatan.startsWith("{")) {
+        parsedCatatan = JSON.parse(row.catatan);
+      } else if (row.catatan) {
+        parsedCatatan.p = row.catatan;
+      }
+    } catch (e) {
+      parsedCatatan.p = row.catatan || "";
+    }
+
     return {
       Id: row.Id,
       KaryawanId: row.KaryawanId,
@@ -698,7 +711,7 @@ async function getMooraResultHandler(req, res) {
       NilaiSkala: row.NilaiSkala,
       Ranking: row.Ranking,
       status: row.status,
-      catatan: row.catatan,
+      catatan: parsedCatatan,
       Karyawan: employee
         ? {
             id: employee.id,
@@ -1067,14 +1080,22 @@ async function getSummaryReportHandler(req, res) {
 
 async function updateHasilReviewHandler(req, res) {
   const { id } = req.params;
-  const { status, catatan } = req.body;
+  const { status, prestasi, indisipliner, saran } = req.body;
 
-  if (!["Draft", "Pending", "Reviewed"].includes(status)) {
+  if (status && !["Draft", "Pending", "Reviewed"].includes(status)) {
     return res.status(400).json({ success: false, message: "Status tidak valid. Gunakan Draft, Pending, atau Reviewed." });
   }
 
-  await updateHasilAkhirStatus(id, { status, catatan });
-  await logActivity(req, "REVIEW", "MooraResult", { Id: id, Status: status, Catatan: catatan });
+  // Format catatan as JSON string
+  const catatanObj = {
+    p: (prestasi || "").trim(),
+    i: (indisipliner || "").trim(),
+    s: (saran || "").trim()
+  };
+  const catatanJson = JSON.stringify(catatanObj);
+
+  await updateHasilAkhirStatus(id, { status, catatan: catatanJson });
+  await logActivity(req, "REVIEW", "MooraResult", { Id: id, Status: status, Catatan: catatanObj });
   
   return res.json({ success: true, message: "Review berhasil disimpan" });
 }
