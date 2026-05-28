@@ -13,6 +13,45 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+  
+  parameters:
+    pageParam:
+      name: page
+      in: query
+      schema: { type: integer, default: 1 }
+    pageSizeParam:
+      name: pageSize
+      in: query
+      schema: { type: integer, default: 10 }
+    searchParam:
+      name: search
+      in: query
+      schema: { type: string }
+    filterParam:
+      name: filter
+      in: query
+      description: JSON string for filtering. e.g. {"status":"Final"}
+      schema: { type: string }
+    sortParam:
+      name: sort
+      in: query
+      description: Format column:asc or column:desc
+      schema: { type: string }
+
+  schemas:
+    Meta:
+      type: object
+      properties:
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+        totalPages: { type: integer }
+    
+    PaginatedResponse:
+      type: object
+      properties:
+        data: { type: array, items: { type: object } }
+        meta: { $ref: '#/components/schemas/Meta' }
 
 paths:
   /api/auth/login:
@@ -55,9 +94,18 @@ paths:
       summary: Get all permissions
       tags: [Access Control]
       security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/searchParam'
+        - $ref: '#/components/parameters/filterParam'
+        - $ref: '#/components/parameters/sortParam'
       responses:
         '200':
-          description: Permissions list
+          description: Paginated permissions list
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginatedResponse' }
     post:
       summary: Create new permission
       tags: [Access Control]
@@ -97,6 +145,12 @@ paths:
       summary: Get all users (Mitra DB)
       tags: [User Management]
       security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/searchParam'
+        - $ref: '#/components/parameters/filterParam'
+        - $ref: '#/components/parameters/sortParam'
       responses:
         '200':
           description: A list of users
@@ -115,6 +169,7 @@ paths:
                         name: { type: string }
                         email: { type: string }
                         role: { type: string }
+                  meta: { $ref: '#/components/schemas/Meta' }
 
   /api/auth/audit-logs:
     get:
@@ -122,15 +177,22 @@ paths:
       tags: [Authentication]
       security: [{ bearerAuth: [] }]
       parameters:
-        - name: page
-          in: query
-          schema: { type: integer, default: 1 }
-        - name: limit
-          in: query
-          schema: { type: integer, default: 50 }
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/searchParam'
+        - $ref: '#/components/parameters/filterParam'
+        - $ref: '#/components/parameters/sortParam'
       responses:
         '200':
           description: Audit log list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { type: array, items: { type: object } }
+                  meta: { $ref: '#/components/schemas/Meta' }
 
   /api/auth/mitra-roles/{role_name}/permissions:
     get:
@@ -169,23 +231,33 @@ paths:
       summary: Get all periods
       tags: [Master Data]
       security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/searchParam'
+        - $ref: '#/components/parameters/filterParam'
+        - $ref: '#/components/parameters/sortParam'
       responses:
         '200':
           description: List of periods
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    Id: { type: integer }
-                    NamaPeriode: { type: string }
-                    DivisiId: { type: integer, nullable: true }
-                    NamaDivisi: { type: string, nullable: true }
-                    TanggalMulai: { type: string, format: date-time, nullable: true }
-                    TanggalSelesai: { type: string, format: date-time, nullable: true }
-                    Status: { type: string }
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        Id: { type: integer }
+                        NamaPeriode: { type: string }
+                        DivisiId: { type: integer, nullable: true }
+                        NamaDivisi: { type: string, nullable: true }
+                        TanggalMulai: { type: string, format: date-time, nullable: true }
+                        TanggalSelesai: { type: string, format: date-time, nullable: true }
+                        Status: { type: string }
+                  meta: { $ref: '#/components/schemas/Meta' }
     post:
       summary: Create period
       tags: [Master Data]
@@ -242,19 +314,29 @@ paths:
       summary: Get attributes list
       tags: [Master Data]
       security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/searchParam'
+        - $ref: '#/components/parameters/filterParam'
+        - $ref: '#/components/parameters/sortParam'
       responses:
         '200':
           description: Attribute list
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    id: { type: integer }
-                    nama: { type: string }
-                    simbol: { type: string }
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        nama: { type: string }
+                        simbol: { type: string }
+                  meta: { $ref: '#/components/schemas/Meta' }
     post:
       summary: Create attribute
       tags: [Master Data]
@@ -315,9 +397,21 @@ paths:
         - name: periode_id
           in: query
           schema: { type: integer }
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/searchParam'
+        - $ref: '#/components/parameters/filterParam'
+        - $ref: '#/components/parameters/sortParam'
       responses:
         '200':
           description: KPI list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { type: object } }
+                  meta: { $ref: '#/components/schemas/Meta' }
     post:
       summary: Create KPI
       tags: [Master Data]
@@ -380,9 +474,21 @@ paths:
         - name: periode_id
           in: query
           schema: { type: integer }
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/searchParam'
+        - $ref: '#/components/parameters/filterParam'
+        - $ref: '#/components/parameters/sortParam'
       responses:
         '200':
           description: List of KPI groups
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { type: object } }
+                  meta: { $ref: '#/components/schemas/Meta' }
     post:
       summary: Create KPI group
       tags: [Master Data]
@@ -571,6 +677,11 @@ paths:
         - name: lokasi_kerja
           in: query
           schema: { type: string }
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/searchParam'
+        - $ref: '#/components/parameters/filterParam'
+        - $ref: '#/components/parameters/sortParam'
       responses:
         '200':
           description: Ranked hasil_akhir data with approval metadata
@@ -580,20 +691,6 @@ paths:
                 type: object
                 properties:
                   success: { type: boolean }
-                  pimpinan:
-                    type: object
-                    nullable: true
-                    properties:
-                      id: { type: integer }
-                      nama: { type: string }
-                      jabatan: { type: string }
-                  pembuat:
-                    type: object
-                    nullable: true
-                    properties:
-                      id: { type: integer }
-                      nama: { type: string }
-                      jabatan: { type: string }
                   data:
                     type: array
                     items:
@@ -608,7 +705,7 @@ paths:
                         created_by: { type: integer, nullable: true }
                         approved_by: { type: integer, nullable: true }
                         status: { type: string }
-                        catatan: { type: string, nullable: true }
+                        catatan: { type: object, nullable: true }
                         Karyawan:
                           type: object
                           properties:
@@ -618,6 +715,7 @@ paths:
                             nik: { type: string }
                             departemen_id: { type: integer }
                             lokasi_kerja: { type: string, nullable: true }
+                  meta: { $ref: '#/components/schemas/Meta' }
 
   /api/spk/report/individual/{periode_id}/{karyawan_id}:
     get:
@@ -688,9 +786,22 @@ paths:
       summary: Get departments from legacy Mitra DB
       tags: [Legacy Mitra]
       security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/searchParam'
+        - $ref: '#/components/parameters/filterParam'
+        - $ref: '#/components/parameters/sortParam'
       responses:
         '200':
           description: Department list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { type: object } }
+                  meta: { $ref: '#/components/schemas/Meta' }
 
   /api/employees:
     get:
@@ -712,9 +823,21 @@ paths:
           schema:
             type: string
             enum: [management, staff]
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/searchParam'
+        - $ref: '#/components/parameters/filterParam'
+        - $ref: '#/components/parameters/sortParam'
       responses:
         '200':
           description: Employee list (includes lokasi_kerja and work location mapping)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { type: object } }
+                  meta: { $ref: '#/components/schemas/Meta' }
 
 
   /api/work-locations:
@@ -728,18 +851,43 @@ paths:
           schema:
             type: string
             enum: [aktif, nonaktif]
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/searchParam'
+        - $ref: '#/components/parameters/filterParam'
+        - $ref: '#/components/parameters/sortParam'
       responses:
         '200':
           description: Work location list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { type: object } }
+                  meta: { $ref: '#/components/schemas/Meta' }
 
   /api/spk/mitra/departments:
     get:
       summary: Backward-compatible alias for departments
       tags: [Legacy Mitra]
       security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/searchParam'
+        - $ref: '#/components/parameters/filterParam'
+        - $ref: '#/components/parameters/sortParam'
       responses:
         '200':
           description: Department list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { type: object } }
+                  meta: { $ref: '#/components/schemas/Meta' }
 
   /api/spk/mitra/karyawan:
     get:
@@ -750,9 +898,21 @@ paths:
         - name: dept_id
           in: query
           schema: { type: integer }
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/searchParam'
+        - $ref: '#/components/parameters/filterParam'
+        - $ref: '#/components/parameters/sortParam'
       responses:
         '200':
           description: Employee list (includes lokasi_kerja and work location mapping)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { type: object } }
+                  meta: { $ref: '#/components/schemas/Meta' }
 
   /api/spk/mitra/work-locations:
     get:
@@ -765,6 +925,18 @@ paths:
           schema:
             type: string
             enum: [aktif, nonaktif]
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/searchParam'
+        - $ref: '#/components/parameters/filterParam'
+        - $ref: '#/components/parameters/sortParam'
       responses:
         '200':
           description: Work location list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { type: object } }
+                  meta: { $ref: '#/components/schemas/Meta' }
