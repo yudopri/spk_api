@@ -1,7 +1,7 @@
 const mysql = require("mysql2/promise");
 
 const mitraPool = mysql.createPool({
-  host: process.env.MITRA_DB_HOST ,
+  host: process.env.MITRA_DB_HOST,
   port: Number(process.env.MITRA_DB_PORT),
   user: process.env.MITRA_DB_USER,
   password: process.env.MITRA_DB_PASSWORD,

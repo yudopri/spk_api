@@ -23,6 +23,7 @@ const {
   getDepartmentById,
   getEmployees,
   getWorkLocations,
+  getAttributes,
   getEmployeeByUserId,
   getEmployeeLocationsByIds,
   getDistinctKaryawanIdsByPeriode,
