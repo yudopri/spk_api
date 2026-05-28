@@ -1,4 +1,4 @@
-const { queryMitra, querySpk } = require("../config/db");
+const { queryMitra, querySpk, applyQueryMeta } = require("../config/db");
 
 const ROLE_ENUM = [
   "Karyawan",
@@ -31,10 +31,14 @@ async function findMitraUserById(id) {
   return rows[0] || null;
 }
 
-async function getAllUsers() {
-  return queryMitra(
-    "SELECT id, name, email, role FROM users ORDER BY id ASC"
-  );
+async function getAllUsers(options = {}) {
+  const baseSql = "SELECT id, name, email, role FROM users";
+  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, [], options, ["name", "email", "role"]);
+  const [rows, totalRes] = await Promise.all([
+    queryMitra(sql, params),
+    queryMitra(countSql, countParams)
+  ]);
+  return { rows, total: totalRes[0]?.total || 0 };
 }
 
 async function findEmployeeByEmail(email) {
@@ -61,8 +65,14 @@ async function getRolePermissions(roleId) {
   return rows.map((r) => r.permission_name);
 }
 
-async function getAllPermissions() {
-  return querySpk("SELECT id, permission_name, path FROM permissions ORDER BY id ASC");
+async function getAllPermissions(options = {}) {
+  const baseSql = "SELECT id, permission_name, path FROM permissions";
+  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, [], options, ["permission_name", "path"]);
+  const [rows, totalRes] = await Promise.all([
+    querySpk(sql, params),
+    querySpk(countSql, countParams)
+  ]);
+  return { rows, total: totalRes[0]?.total || 0 };
 }
 
 async function createPermission(permissionName, pathValue) {

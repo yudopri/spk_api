@@ -98,6 +98,27 @@ async function decryptNikValue(nik) {
   }
 }
 
+function getQueryOptions(req) {
+  return {
+    search: req.query.search,
+    filter: req.query.filter,
+    page: req.query.page,
+    pageSize: req.query.pageSize || req.query.limit, // handle both pageSize and limit
+    sort: req.query.sort
+  };
+}
+
+function formatMeta(options, total) {
+  const page = parseInt(options.page || 1);
+  const pageSize = parseInt(options.pageSize || total || 1);
+  return {
+    total,
+    page,
+    pageSize,
+    totalPages: Math.ceil(total / (pageSize || 1))
+  };
+}
+
 function canOnlyViewOwnDivision(role) {
   return isAdminAdmViewOnlyRole(role);
 }
@@ -126,19 +147,20 @@ function canAccessPeriodeForUser(user, periode) {
 
 async function getPeriodeHandler(req, res) {
   const role = req.user?.role;
-  let periodes = [];
+  let result = { rows: [], total: 0 };
   const departments = await getDepartments();
-  const divisionNameById = new Map(departments.map((d) => [Number(d.id), d.name]));
+  const divisionNameById = new Map(departments.rows.map((d) => [Number(d.id), d.name]));
+  const options = getQueryOptions(req);
 
   if (canOnlyViewOwnDivision(role) || canOnlyViewSelfEmployee(role)) {
     const deptId = Number(req.user?.dept_id || 0);
-    periodes = deptId ? await getPeriodesByDivision(deptId) : [];
+    result = deptId ? await getPeriodesByDivision(deptId, options) : { rows: [], total: 0 };
   } else {
-    periodes = await getPeriodes();
+    result = await getPeriodes(options);
   }
 
-  return res.json(
-    periodes.map((p) => ({
+  return res.json({
+    data: result.rows.map((p) => ({
       Id: p.Id,
       NamaPeriode: p.NamaPeriode,
       Tahun: p.Tahun,
@@ -147,8 +169,9 @@ async function getPeriodeHandler(req, res) {
       TanggalMulai: toIso(p.TanggalMulai),
       TanggalSelesai: toIso(p.TanggalSelesai),
       Status: p.Status
-    }))
-  );
+    })),
+    meta: formatMeta(options, result.total)
+  });
 }
 
 async function createPeriodeHandler(req, res) {
@@ -286,17 +309,18 @@ async function deletePeriodeHandler(req, res) {
 
 async function getKpiHandler(req, res) {
   const periodeId = req.query.periode_id;
-  let rows = [];
+  let result = { rows: [], total: 0 };
+  const options = getQueryOptions(req);
 
   if (canOnlyViewOwnDivision(req.user?.role) || canOnlyViewSelfEmployee(req.user?.role)) {
     const deptId = Number(req.user?.dept_id || 0);
-    rows = deptId ? await getKpisByDivision(deptId, periodeId || null) : [];
+    result = deptId ? await getKpisByDivision(deptId, periodeId || null, options) : { rows: [], total: 0 };
   } else {
-    rows = await getKpis(periodeId);
+    result = await getKpis(periodeId, options);
   }
 
-  return res.json(
-    rows.map((k) => ({
+  return res.json({
+    data: result.rows.map((k) => ({
       Id: k.Id,
       NamaKpi: k.NamaKpi,
       Tipe: k.Tipe,
@@ -308,8 +332,9 @@ async function getKpiHandler(req, res) {
       bobot_grup: k.bobot_grup || 0,
       nama_satuan: k.nama_satuan || null,
       simbol: k.simbol || null
-    }))
-  );
+    })),
+    meta: formatMeta(options, result.total)
+  });
 }
 
 async function createKpiHandler(req, res) {
@@ -332,19 +357,17 @@ async function createKpiHandler(req, res) {
 }
 
 async function getAttributesHandler(req, res) {
-  const rows = await querySpk(
-    `SELECT id, nama, simbol
-     FROM attribute
-     ORDER BY id ASC`
-  );
+  const options = getQueryOptions(req);
+  const { rows, total } = await getAttributes(options);
 
-  return res.json(
-    rows.map((row) => ({
+  return res.json({
+    data: rows.map((row) => ({
       id: row.id,
       nama: row.nama,
       simbol: row.simbol
-    }))
-  );
+    })),
+    meta: formatMeta(options, total)
+  });
 }
 
 async function createAttributeHandler(req, res) {
@@ -432,8 +455,12 @@ async function deleteKpiHandler(req, res) {
 // KPI Groups Handlers
 async function getKpiGroupsHandler(req, res) {
   const { periode_id } = req.query;
-  const groups = await getKpiGroups(periode_id);
-  return res.json(groups);
+  const options = getQueryOptions(req);
+  const { rows, total } = await getKpiGroups(periode_id, options);
+  return res.json({
+    data: rows,
+    meta: formatMeta(options, total)
+  });
 }
 
 async function createKpiGroupHandler(req, res) {
@@ -682,7 +709,8 @@ async function getMooraResultHandler(req, res) {
     return res.status(403).json({ success: false, message: "Tidak boleh melihat hasil lintas divisi" });
   }
 
-  const rows = await getHasilAkhirByPeriode(periodeId);
+  const options = getQueryOptions(req);
+  const { rows, total } = await getHasilAkhirByPeriode(periodeId, options);
   const employeeIds = [...new Set(rows.map((row) => row.KaryawanId))];
   const employees = await getEmployeesByIds(employeeIds);
   const employeeMap = new Map(employees.map((emp) => [Number(emp.id), emp]));
@@ -740,21 +768,28 @@ async function getMooraResultHandler(req, res) {
 }
 
 async function getDepartmentsHandler(req, res) {
-  let rows = await getDepartments();
+  const options = getQueryOptions(req);
+  let { rows, total } = await getDepartments(options);
 
   if (canOnlyViewSelfEmployee(req.user?.role)) {
     const deptId = Number(req.user?.dept_id || 0);
     const ownDept = deptId ? await getDepartmentById(deptId) : null;
     rows = ownDept ? [ownDept] : [];
+    total = rows.length;
   }
 
-  return res.json(rows.map((d) => ({ id: d.id, name: d.name })));
+  return res.json({
+    data: rows.map((d) => ({ id: d.id, name: d.name })),
+    meta: formatMeta(options, total)
+  });
 }
 
 async function getEmployeesHandler(req, res) {
-  const rows = await getEmployees({
+  const options = getQueryOptions(req);
+  const { rows, total } = await getEmployees({
     deptId: req.query.dept_id || null,
-    lokasiKerja: req.query.lokasi_kerja || null
+    lokasiKerja: req.query.lokasi_kerja || null,
+    ...options
   });
 
   let filteredRows = [...rows];
@@ -791,34 +826,37 @@ async function getEmployeesHandler(req, res) {
     }))
   );
 
-  return res.json(mapped);
+  return res.json({
+    data: mapped,
+    meta: formatMeta(options, total)
+  });
 }
 
 async function getWorkLocationsHandler(req, res) {
-  const rows = await getWorkLocations({ status: req.query.status || null });
-  return res.json(
-    rows.map((w) => ({
+  const options = getQueryOptions(req);
+  const { rows, total } = await getWorkLocations({
+    status: req.query.status || null,
+    ...options
+  });
+  return res.json({
+    data: rows.map((w) => ({
       id: w.id,
       name: w.name,
       status: w.status,
       berlaku: toIso(w.berlaku),
       tanggalawal: toIso(w.tanggalawal),
       tanggal_mulai: toIso(w.tanggal_mulai)
-    }))
-  );
+    })),
+    meta: formatMeta(options, total)
+  });
 }
 
 async function getAuditLogsHandler(req, res) {
-  const limit = Math.min(Math.max(Number(req.query.limit || 50), 1), 200);
-  const page = Math.max(Number(req.query.page || 1), 1);
-  const offset = (page - 1) * limit;
-
-  const result = await getAuditLogs({ limit, offset });
+  const options = getQueryOptions(req);
+  const result = await getAuditLogs(options);
+  
   return res.json({
     success: true,
-    page,
-    limit,
-    total: result.total,
     data: result.rows.map((row) => ({
       Id: row.Id,
       UserId: row.UserId,
@@ -829,7 +867,8 @@ async function getAuditLogsHandler(req, res) {
       IpAddress: row.IpAddress,
       UserAgent: row.UserAgent,
       CreatedAt: toIso(row.CreatedAt)
-    }))
+    })),
+    meta: formatMeta(options, result.total)
   });
 }
 

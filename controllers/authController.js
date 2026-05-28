@@ -112,9 +112,34 @@ async function logout(_req, res) {
   return res.status(200).json({ message: "Successfully logged out" });
 }
 
-async function getPermissions(_req, res) {
-  const perms = await getAllPermissions();
-  return res.json(perms);
+function getQueryOptions(req) {
+  return {
+    search: req.query.search,
+    filter: req.query.filter,
+    page: req.query.page,
+    pageSize: req.query.pageSize || req.query.limit,
+    sort: req.query.sort
+  };
+}
+
+function formatMeta(options, total) {
+  const page = parseInt(options.page || 1);
+  const pageSize = parseInt(options.pageSize || total || 1);
+  return {
+    total,
+    page,
+    pageSize,
+    totalPages: Math.ceil(total / (pageSize || 1))
+  };
+}
+
+async function getPermissions(req, res) {
+  const options = getQueryOptions(req);
+  const { rows, total } = await getAllPermissions(options);
+  return res.json({
+    data: rows,
+    meta: formatMeta(options, total)
+  });
 }
 
 async function createPermissionHandler(req, res) {
@@ -169,20 +194,15 @@ async function seedPermissions(_req, res) {
   return res.json({ success: true, message: "Permissions seeded and mapped to Enum roles successfully" });
 }
 
-async function getUsers(_req, res) {
+async function getUsers(req, res) {
   try {
-    const { getAllUsers } = require("../models/authModel");
-    const users = await getAllUsers();
-    return res.json({ success: true, data: users });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
-  }
-}
-
-async function getUsers(_req, res) {
-  try {
-    const users = await getAllUsers();
-    return res.json({ success: true, data: users });
+    const options = getQueryOptions(req);
+    const { rows, total } = await getAllUsers(options);
+    return res.json({ 
+      success: true, 
+      data: rows,
+      meta: formatMeta(options, total)
+    });
   } catch (error) {
     return res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
   }

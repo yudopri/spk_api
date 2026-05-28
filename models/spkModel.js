@@ -1,5 +1,5 @@
 const crypto = require("crypto");
-const { queryMitra, querySpk } = require("../config/db");
+const { queryMitra, querySpk, applyQueryMeta } = require("../config/db");
 
 function getLaravelKey() {
   const rawKey = process.env.LARAVEL_APP_KEY_BASE64 || process.env.APP_KEY || "";
@@ -39,22 +39,29 @@ async function insertAuditLog({ userId, username, action, entityName, details, i
   );
 }
 
-async function getPeriodes() {
-  return querySpk(
-    `SELECT Id, NamaPeriode, Tahun, DivisiId, TanggalMulai, TanggalSelesai, Status
-     FROM periodes
-     ORDER BY Id DESC`
-  );
+async function getPeriodes(options = {}) {
+  const baseSql = `SELECT Id, NamaPeriode, Tahun, DivisiId, TanggalMulai, TanggalSelesai, Status
+     FROM periodes`;
+  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, [], options, ["NamaPeriode", "Tahun", "Status"]);
+  
+  const [rows, totalRes] = await Promise.all([
+    querySpk(sql, params),
+    querySpk(countSql, countParams)
+  ]);
+  return { rows, total: totalRes[0]?.total || 0 };
 }
 
-async function getPeriodesByDivision(divisiId) {
-  return querySpk(
-    `SELECT Id, NamaPeriode, Tahun, DivisiId, TanggalMulai, TanggalSelesai, Status
+async function getPeriodesByDivision(divisiId, options = {}) {
+  const baseSql = `SELECT Id, NamaPeriode, Tahun, DivisiId, TanggalMulai, TanggalSelesai, Status
      FROM periodes
-     WHERE DivisiId = ? OR DivisiId IS NULL
-     ORDER BY Id DESC`,
-    [divisiId]
-  );
+     WHERE DivisiId = ? OR DivisiId IS NULL`;
+  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, [divisiId], options, ["NamaPeriode", "Tahun", "Status"]);
+
+  const [rows, totalRes] = await Promise.all([
+    querySpk(sql, params),
+    querySpk(countSql, countParams)
+  ]);
+  return { rows, total: totalRes[0]?.total || 0 };
 }
 
 async function getPeriodeById(id) {
@@ -111,14 +118,20 @@ async function deletePeriode(id) {
 }
 
 // KPI Groups
-async function getKpiGroups(periodeId) {
-  let sql = "SELECT id, nama_grup, periode_id, bobot_grup FROM kpi_groups";
-  const params = [];
+async function getKpiGroups(periodeId, options = {}) {
+  let baseSql = "SELECT id, nama_grup, periode_id, bobot_grup FROM kpi_groups";
+  const baseParams = [];
   if (periodeId) {
-    sql += " WHERE periode_id = ?";
-    params.push(periodeId);
+    baseSql += " WHERE periode_id = ?";
+    baseParams.push(periodeId);
   }
-  return querySpk(sql, params);
+
+  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, baseParams, options, ["nama_grup"]);
+  const [rows, totalRes] = await Promise.all([
+    querySpk(sql, params),
+    querySpk(countSql, countParams)
+  ]);
+  return { rows, total: totalRes[0]?.total || 0 };
 }
 
 async function createKpiGroup(data) {
@@ -175,8 +188,8 @@ async function updateGroupWeights(periodeId, weightByGroupId) {
   await Promise.all(promises);
 }
 
-async function getKpis(periodeId) {
-  let sql = `
+async function getKpis(periodeId, options = {}) {
+  let baseSql = `
     SELECT k.Id, k.NamaKpi, k.Tipe, k.BobotAhp, k.PeriodeId, k.attributeId, k.group_id,
            ms.nama AS nama_satuan, ms.simbol AS simbol,
            kg.nama_grup AS nama_grup, kg.bobot_grup AS bobot_grup
@@ -184,17 +197,22 @@ async function getKpis(periodeId) {
     LEFT JOIN attribute ms ON ms.id = k.attributeId
     LEFT JOIN kpi_groups kg ON kg.id = k.group_id
   `;
-  const params = [];
+  const baseParams = [];
   if (periodeId) {
-    sql += " WHERE k.PeriodeId = ?";
-    params.push(periodeId);
+    baseSql += " WHERE k.PeriodeId = ?";
+    baseParams.push(periodeId);
   }
-  sql += " ORDER BY k.Id ASC";
-  return querySpk(sql, params);
+
+  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, baseParams, options, ["k.NamaKpi", "k.Tipe"]);
+  const [rows, totalRes] = await Promise.all([
+    querySpk(sql, params),
+    querySpk(countSql, countParams)
+  ]);
+  return { rows, total: totalRes[0]?.total || 0 };
 }
 
-async function getKpisByDivision(divisiId, periodeId) {
-  let sql =
+async function getKpisByDivision(divisiId, periodeId, options = {}) {
+  let baseSql =
     `SELECT k.Id, k.NamaKpi, k.Tipe, k.BobotAhp, k.PeriodeId, k.attributeId, k.group_id,
             ms.nama AS nama_satuan, ms.simbol AS simbol,
             kg.nama_grup AS nama_grup, kg.bobot_grup AS bobot_grup
@@ -203,15 +221,29 @@ async function getKpisByDivision(divisiId, periodeId) {
      LEFT JOIN attribute ms ON ms.id = k.attributeId
      LEFT JOIN kpi_groups kg ON kg.id = k.group_id
      WHERE (p.DivisiId = ? OR p.DivisiId IS NULL)`;
-  const params = [divisiId];
+  const baseParams = [divisiId];
 
   if (periodeId) {
-    sql += " AND k.PeriodeId = ?";
-    params.push(periodeId);
+    baseSql += " AND k.PeriodeId = ?";
+    baseParams.push(periodeId);
   }
 
-  sql += " ORDER BY k.Id ASC";
-  return querySpk(sql, params);
+  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, baseParams, options, ["k.NamaKpi", "k.Tipe"]);
+  const [rows, totalRes] = await Promise.all([
+    querySpk(sql, params),
+    querySpk(countSql, countParams)
+  ]);
+  return { rows, total: totalRes[0]?.total || 0 };
+}
+
+async function getAttributes(options = {}) {
+  const baseSql = "SELECT id, nama, simbol FROM attribute";
+  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, [], options, ["nama", "simbol"]);
+  const [rows, totalRes] = await Promise.all([
+    querySpk(sql, params),
+    querySpk(countSql, countParams)
+  ]);
+  return { rows, total: totalRes[0]?.total || 0 };
 }
 
 async function createKpi(data) {
@@ -318,14 +350,17 @@ async function insertHasilAkhirBatch(rows) {
   );
 }
 
-async function getHasilAkhirByPeriode(periodeId) {
-  return querySpk(
-    `SELECT h.Id, h.KaryawanId, h.PeriodeId, h.NilaiOptimasi, h.NilaiSkala, h.Ranking, h.created_by, h.approved_by, h.status, h.catatan
+async function getHasilAkhirByPeriode(periodeId, options = {}) {
+  const baseSql = `SELECT h.Id, h.KaryawanId, h.PeriodeId, h.NilaiOptimasi, h.NilaiSkala, h.Ranking, h.created_by, h.approved_by, h.status, h.catatan
      FROM hasil_akhir h
-     WHERE h.PeriodeId = ?
-     ORDER BY h.Ranking ASC`,
-    [periodeId]
-  );
+     WHERE h.PeriodeId = ?`;
+  
+  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, [periodeId], options, ["status"]);
+  const [rows, totalRes] = await Promise.all([
+    querySpk(sql, params),
+    querySpk(countSql, countParams)
+  ]);
+  return { rows, total: totalRes[0]?.total || 0 };
 }
 
 async function updateHasilAkhirStatus(id, { status, catatan, approved_by }) {
@@ -371,12 +406,23 @@ async function getEmployeesByIds(employeeIds) {
   }));
 }
 
-async function getDepartments() {
+async function getDepartments(options = {}) {
+  let table = "departments";
   try {
-    return await queryMitra("SELECT id, name FROM departments ORDER BY id ASC");
+    // Check if departments table exists by running a quick select
+    await queryMitra("SELECT 1 FROM departments LIMIT 1");
   } catch (_) {
-    return queryMitra("SELECT id, name FROM departemens ORDER BY id ASC");
+    table = "departemens";
   }
+
+  const baseSql = `SELECT id, name FROM ${table}`;
+  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, [], options, ["name"]);
+
+  const [rows, totalRes] = await Promise.all([
+    queryMitra(sql, params),
+    queryMitra(countSql, countParams)
+  ]);
+  return { rows, total: totalRes[0]?.total || 0 };
 }
 
 async function getDepartmentById(id) {
@@ -389,8 +435,8 @@ async function getDepartmentById(id) {
   }
 }
 
-async function getEmployees({ deptId, lokasiKerja }) {
-  let sql = `SELECT e.id, e.name, e.email, e.nik_ktp, e.departemen_id, e.lokasikerja,
+async function getEmployees({ deptId, lokasiKerja, ...options }) {
+  let baseSql = `SELECT e.id, e.name, e.email, e.nik_ktp, e.departemen_id, e.lokasikerja,
                     d.name AS department_name, wl.id AS work_location_id,
                     wl.name AS work_location_name, u.id AS user_id, u.role
              FROM employees e
@@ -398,32 +444,45 @@ async function getEmployees({ deptId, lokasiKerja }) {
              LEFT JOIN departemens d ON d.id = e.departemen_id
              LEFT JOIN work_locations wl ON wl.name = e.lokasikerja
              WHERE e.status_kerja = 'aktif'`;
-  const params = [];
+  const baseParams = [];
   if (deptId) {
-    sql += " AND e.departemen_id = ?";
-    params.push(deptId);
+    baseSql += " AND e.departemen_id = ?";
+    baseParams.push(deptId);
   }
   if (lokasiKerja) {
-    sql += " AND e.lokasikerja = ?";
-    params.push(lokasiKerja);
+    baseSql += " AND e.lokasikerja = ?";
+    baseParams.push(lokasiKerja);
   }
-  sql += " ORDER BY e.id ASC";
-  const rows = await queryMitra(sql, params);
-  return rows.map((row) => ({
-    ...row,
-    nik: decryptLaravelNik(row.nik_ktp)
-  }));
+
+  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, baseParams, options, ["e.name", "e.email", "e.nik_ktp"]);
+  const [rows, totalRes] = await Promise.all([
+    queryMitra(sql, params),
+    queryMitra(countSql, countParams)
+  ]);
+
+  return {
+    rows: rows.map((row) => ({
+      ...row,
+      nik: decryptLaravelNik(row.nik_ktp)
+    })),
+    total: totalRes[0]?.total || 0
+  };
 }
 
-async function getWorkLocations({ status }) {
-  let sql = "SELECT id, name, status, berlaku, tanggalawal, tanggal_mulai FROM work_locations";
-  const params = [];
+async function getWorkLocations({ status, ...options }) {
+  let baseSql = "SELECT id, name, status, berlaku, tanggalawal, tanggal_mulai FROM work_locations";
+  const baseParams = [];
   if (status) {
-    sql += " WHERE status = ?";
-    params.push(status);
+    baseSql += " WHERE status = ?";
+    baseParams.push(status);
   }
-  sql += " ORDER BY name ASC";
-  return queryMitra(sql, params);
+
+  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, baseParams, options, ["name"]);
+  const [rows, totalRes] = await Promise.all([
+    queryMitra(sql, params),
+    queryMitra(countSql, countParams)
+  ]);
+  return { rows, total: totalRes[0]?.total || 0 };
 }
 
 async function getEmployeeByUserId(userId) {
@@ -450,18 +509,18 @@ async function getEmployeeLocationsByIds(employeeIds) {
   );
 }
 
-async function getAuditLogs({ limit, offset }) {
-  const rows = await querySpk(
-    `SELECT Id, UserId, Username, Action, EntityName, Details, IpAddress, UserAgent, CreatedAt
-     FROM audit_logs
-     ORDER BY Id DESC
-     LIMIT ? OFFSET ?`,
-    [limit, offset]
-  );
-  const totalRows = await querySpk("SELECT COUNT(*) AS total FROM audit_logs");
+async function getAuditLogs(options = {}) {
+  const baseSql = `SELECT Id, UserId, Username, Action, EntityName, Details, IpAddress, UserAgent, CreatedAt
+     FROM audit_logs`;
+  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, [], options, ["Username", "Action", "EntityName"]);
+
+  const [rows, totalRes] = await Promise.all([
+    querySpk(sql, params),
+    querySpk(countSql, countParams)
+  ]);
   return {
     rows,
-    total: Number(totalRows[0]?.total || 0)
+    total: Number(totalRes[0]?.total || 0)
   };
 }
 
@@ -509,6 +568,7 @@ module.exports = {
   getDepartmentById,
   getEmployees,
   getWorkLocations,
+  getAttributes,
   getEmployeeByUserId,
   getEmployeeLocationsByIds,
   getDistinctKaryawanIdsByPeriode,
