@@ -26,6 +26,7 @@ const {
 } = require("../controllers/spkController");
 const { authenticateToken } = require("../middlewares/authMiddleware");
 const { hasPermission } = require("../middlewares/permissionMiddleware");
+const { checkPeriodStatus } = require("../middlewares/freezeMiddleware");
 
 const router = express.Router();
 
@@ -35,24 +36,24 @@ router.put("/periode/:id", authenticateToken, hasPermission("periode_manage"), u
 router.delete("/periode/:id", authenticateToken, hasPermission("periode_manage"), deletePeriodeHandler);
 
 router.get("/kpi", authenticateToken, hasPermission("kpi_view"), getKpiHandler);
-router.post("/kpi", authenticateToken, hasPermission("kpi_manage"), createKpiHandler);
-router.put("/kpi/:id", authenticateToken, hasPermission("kpi_manage"), updateKpiHandler);
-router.delete("/kpi/:id", authenticateToken, hasPermission("kpi_manage"), deleteKpiHandler);
+router.post("/kpi", authenticateToken, hasPermission("kpi_manage"), checkPeriodStatus, createKpiHandler);
+router.put("/kpi/:id", authenticateToken, hasPermission("kpi_manage"), checkPeriodStatus, updateKpiHandler);
+router.delete("/kpi/:id", authenticateToken, hasPermission("kpi_manage"), checkPeriodStatus, deleteKpiHandler);
 
 router.get("/kpi-group", authenticateToken, hasPermission("kpi_view"), getKpiGroupsHandler);
-router.post("/kpi-group", authenticateToken, hasPermission("kpi_manage"), createKpiGroupHandler);
-router.put("/kpi-group/:id", authenticateToken, hasPermission("kpi_manage"), updateKpiGroupHandler);
-router.delete("/kpi-group/:id", authenticateToken, hasPermission("kpi_manage"), deleteKpiGroupHandler);
+router.post("/kpi-group", authenticateToken, hasPermission("kpi_manage"), checkPeriodStatus, createKpiGroupHandler);
+router.put("/kpi-group/:id", authenticateToken, hasPermission("kpi_manage"), checkPeriodStatus, updateKpiGroupHandler);
+router.delete("/kpi-group/:id", authenticateToken, hasPermission("kpi_manage"), checkPeriodStatus, deleteKpiGroupHandler);
 
 router.get("/ahp-group/perbandingan/:periode_id", authenticateToken, hasPermission("spk_view"), getGroupComparisonsHandler);
-router.post("/ahp-group/perbandingan/:periode_id", authenticateToken, hasPermission("spk_manage"), saveGroupComparisonsHandler);
+router.post("/ahp-group/perbandingan/:periode_id", authenticateToken, hasPermission("spk_manage"), checkPeriodStatus, saveGroupComparisonsHandler);
 
 router.get("/ahp/perbandingan/:periode_id", authenticateToken, hasPermission("spk_view"), getComparisonsHandler);
-router.post("/ahp/perbandingan", authenticateToken, hasPermission("spk_manage"), inputComparisonHandler);
-router.post("/ahp/calculate-weight/:periode_id", authenticateToken, hasPermission("spk_calculate"), calculateWeightsHandler);
+router.post("/ahp/perbandingan", authenticateToken, hasPermission("spk_manage"), checkPeriodStatus, inputComparisonHandler);
+router.post("/ahp/calculate-weight/:periode_id", authenticateToken, hasPermission("spk_calculate"), checkPeriodStatus, calculateWeightsHandler);
 
-router.post("/moora/penilaian", authenticateToken, hasPermission("score_input"), inputPenilaianHandler);
-router.post("/moora/calculate/:periode_id", authenticateToken, hasPermission("spk_calculate"), calculateMooraHandler);
+router.post("/moora/penilaian", authenticateToken, hasPermission("score_input"), checkPeriodStatus, inputPenilaianHandler);
+router.post("/moora/calculate/:periode_id", authenticateToken, hasPermission("spk_calculate"), checkPeriodStatus, calculateMooraHandler);
 router.get("/moora/hasil/:periode_id", authenticateToken, hasPermission("spk_view"), getMooraResultHandler);
 router.patch("/moora/hasil/:id/review", authenticateToken, hasPermission("spk_calculate"), updateHasilReviewHandler);
 

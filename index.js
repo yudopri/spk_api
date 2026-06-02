@@ -8,6 +8,7 @@ const YAML = require("yamljs");
 const authRoutes = require("./routes/authRoutes");
 const spkRoutes = require("./routes/spkRoutes");
 const masterRoutes = require("./routes/masterRoutes");
+const spkEngineRoutes = require("./routes/spkEngineRoutes");
 const { runStartupSeedIfEnabled } = require("./services/startupSeed");
 
 const app = express();
@@ -40,6 +41,7 @@ app.get("/", (_req, res) => {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/spk", spkRoutes);
+app.use("/api", spkEngineRoutes);
 app.use("/api", masterRoutes);
 
 app.get("/api/docs/swagger.yaml", (_req, res) => {
