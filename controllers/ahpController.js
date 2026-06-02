@@ -44,6 +44,42 @@ async function calculateAhpLive(req, res) {
 }
 
 /**
+ * Validate AHP Matrix without saving to database.
+ * Used for real-time consistency feedback (CR).
+ * POST /api/spk/ahp/validate-matrix
+ */
+async function validateAhpMatrix(req, res) {
+  try {
+    const { comparisons } = req.body; // [{id_a, id_b, nilai}, ...]
+
+    if (!comparisons || !Array.isArray(comparisons) || comparisons.length === 0) {
+      return res.status(400).json({ success: false, message: "Comparisons array is required." });
+    }
+
+    // Extract unique IDs
+    const criteriaIds = [...new Set(comparisons.flatMap(c => [c.id_a, c.id_b]))];
+
+    // Adapt input to match spkMath.calculateAHP expectations
+    const kpis = criteriaIds.map(id => ({ Id: id }));
+    const adaptComps = comparisons.map(c => ({
+      KpiAId: c.id_a,
+      KpiBId: c.id_b,
+      Nilai: c.nilai
+    }));
+
+    const result = calculateAHP(kpis, adaptComps);
+
+    return res.json({
+      success: true,
+      cr: result.consistency.cr,
+      isConsistent: result.consistency.isConsistent
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+/**
  * 4. Endpoint Perankingan
  * GET /api/ranking/:periode_id
  * Executes final ranking based on (Decision Matrix * KPI_Periode Weights)
@@ -123,5 +159,6 @@ async function getRankingByPeriod(req, res) {
 
 module.exports = {
   calculateAhpLive,
+  validateAhpMatrix,
   getRankingByPeriod
 };
