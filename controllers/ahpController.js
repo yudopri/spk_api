@@ -89,8 +89,12 @@ async function getRankingByPeriod(req, res) {
     const { periode_id } = req.params;
 
     // 1. Get KPI Snapshot for this period (Weights)
+    // Joining with kpi_masters to get names for the details
     const kpiSnapshots = await querySpk(
-      "SELECT id, kpi_master_id, bobot_ahp FROM kpi_periodes WHERE periode_id = ? AND status_aktif = TRUE",
+      `SELECT kp.id, kp.kpi_master_id, kp.bobot_ahp, km.nama_kriteria 
+       FROM kpi_periodes kp
+       JOIN kpi_masters km ON kp.kpi_master_id = km.id
+       WHERE kp.periode_id = ? AND kp.status_aktif = TRUE`,
       [periode_id]
     );
 
@@ -98,10 +102,13 @@ async function getRankingByPeriod(req, res) {
       return res.status(404).json({ success: false, message: "No active KPIs found for this period." });
     }
 
-    // Map weights for easy access
+    // Map weights and names for easy access
     const weightMap = {};
     kpiSnapshots.forEach(k => {
-      weightMap[k.id] = parseFloat(k.bobot_ahp);
+      weightMap[k.id] = {
+        weight: parseFloat(k.bobot_ahp || 0),
+        nama: k.nama_kriteria
+      };
     });
 
     // 2. Get All Evaluations for this period
@@ -123,24 +130,35 @@ async function getRankingByPeriod(req, res) {
           id: ev.karyawan_id,
           nama: ev.nama_karyawan,
           totalScore: 0,
+          nilai_akhir: 0, 
+          nilai_optimasi: 0, // Align with hasil_akhir table naming
           details: []
         };
       }
       
-      const weight = weightMap[ev.kpi_periode_id] || 0;
-      const weightedScore = parseFloat(ev.nilai_karyawan) * weight;
+      const kpiInfo = weightMap[ev.kpi_periode_id] || { weight: 0, nama: "Unknown" };
+      const weight = kpiInfo.weight;
+      const score = parseFloat(ev.nilai_karyawan || 0);
+      const weightedScore = score * weight;
       
       rankingMap[ev.karyawan_id].totalScore += weightedScore;
       rankingMap[ev.karyawan_id].details.push({
         kpi_periode_id: ev.kpi_periode_id,
-        score: ev.nilai_karyawan,
+        nama_kriteria: kpiInfo.nama,
+        score: score,
         weight: weight,
         weightedScore: weightedScore
       });
     });
 
-    // 4. Sort by Score descending
-    const finalRanking = Object.values(rankingMap).sort((a, b) => b.totalScore - a.totalScore);
+    // 4. Sort by Score descending and finalize nilai_akhir/nilai_optimasi
+    const finalRanking = Object.values(rankingMap).map(item => {
+      // Round to 4 decimal places for cleanliness
+      item.totalScore = Math.round(item.totalScore * 10000) / 10000;
+      item.nilai_akhir = item.totalScore;
+      item.nilai_optimasi = item.totalScore;
+      return item;
+    }).sort((a, b) => b.totalScore - a.totalScore);
 
     // Add rank number
     finalRanking.forEach((item, index) => {
