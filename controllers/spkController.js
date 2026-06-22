@@ -1215,7 +1215,7 @@ async function getIndividualReportHandler(req, res) {
       const ev = userEvals.find((e) => Number(e.KpiId) === Number(k.Id));
       return {
         Kriteria: k.NamaKpi,
-        Nilai: ev ? ev.Nilai : 0,
+        Nilai: ev ? ev.Realisasi : 0,
         Satuan: k.simbol || ""
       };
     });
@@ -1278,7 +1278,7 @@ async function getIndividualReportHandler(req, res) {
       data.forEach((item, idx) => {
         // Ensure values are strings
         const kriteria = String(item.Kriteria || "");
-        const nilai = String(item.Nilai || 0);
+        const nilai = String(item.Realisasi || 0);
         const satuan = String(item.nama_satuan || "");
 
         page.drawText(`${idx + 1}`, { x: 50, y: yPos, size: 10, font });
