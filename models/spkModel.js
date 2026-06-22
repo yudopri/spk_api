@@ -189,26 +189,29 @@ async function updateGroupWeights(periodeId, weightByGroupId) {
 }
 
 async function getKpis(periodeId, options = {}) {
+  async function getKpis(periodeId, options = {}) {
   let baseSql = `
-    SELECT k.Id, k.NamaKpi, k.Tipe, k.Target, k.IsActive, k.BobotAhp, k.PeriodeId, k.attributeId, k.group_id,
-           ms.nama AS nama_satuan, ms.simbol AS simbol,
-           kg.nama_grup AS nama_grup, kg.bobot_grup AS bobot_grup
+    SELECT 
+      k.Id, k.NamaKpi, k.Tipe, k.Target, k.IsActive, k.BobotAhp,
+      k.PeriodeId, k.attributeId, k.group_id,
+      kg.nama_grup, kg.bobot_grup
     FROM kpis k
-    LEFT JOIN attribute ms ON ms.id = k.attributeId
-    LEFT JOIN kpi_groups kg ON kg.id = k.group_id
+    INNER JOIN kpi_groups kg ON kg.id = k.group_id
+    WHERE kg.periode_id = ?
   `;
-  const baseParams = [];
-  if (periodeId) {
-    baseSql += " WHERE k.PeriodeId = ?";
-    baseParams.push(periodeId);
-  }
 
-  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, baseParams, options, ["k.NamaKpi", "k.Tipe"]);
+  const baseParams = [periodeId];
+
+  const { sql, params, countSql, countParams } =
+    applyQueryMeta(baseSql, baseParams, options, ["k.NamaKpi", "k.Tipe"]);
+
   const [rows, totalRes] = await Promise.all([
     querySpk(sql, params),
     querySpk(countSql, countParams)
   ]);
+
   return { rows, total: totalRes[0]?.total || 0 };
+}
 }
 
 async function getKpiMetadata(periodeId) {
