@@ -362,39 +362,54 @@ async function updateKpiWeights(periodeId, weightByKpiId) {
 }
 
 async function replaceEvaluations(periodeId, evals) {
-  const employeeIds = [...new Set(evals.map((x) => x.KaryawanId))];
+  const employeeIds = [...new Set(evals.map((x) => Number(x.KaryawanId)))];
+
   if (employeeIds.length > 0) {
     const placeholders = employeeIds.map(() => "?").join(",");
     await querySpk(
-      `DELETE FROM penilaians WHERE PeriodeId = ? AND KaryawanId IN (${placeholders})`,
-      [periodeId, ...employeeIds]
+      `DELETE FROM penilaians 
+       WHERE PeriodeId = ? 
+       AND KaryawanId IN (${placeholders})`,
+      [Number(periodeId), ...employeeIds]
     );
   }
 
   if (!evals.length) return;
+
   const valuesSql = evals.map(() => "(?, ?, ?, ?, ?, ?, ?)").join(",");
+
   const params = evals.flatMap((ev) => [
-    ev.KaryawanId,
-    ev.KpiId,
-    ev.PeriodeId,
-    ev.Realisasi ?? ev.Nilai ?? 0,
-    ev.Achievement ?? 0,
-    ev.Nilai ?? ev.Realisasi ?? 0,
-    ev.created_by ?? null
+    Number(ev.KaryawanId),
+    Number(ev.KpiId),
+    Number(ev.PeriodeId),
+    Number(ev.Realisasi ?? ev.Nilai ?? 0),
+    Number(ev.Achievement ?? 0),
+    Number(ev.Nilai ?? ev.Realisasi ?? 0),
+    Number(ev.created_by ?? 0)
   ]);
+
   await querySpk(
-    `INSERT INTO penilaians(KaryawanId, KpiId, PeriodeId, Realisasi, Achievement, Nilai, created_by) VALUES ${valuesSql}`,
+    `INSERT INTO penilaians
+     (KaryawanId, KpiId, PeriodeId, Realisasi, Achievement, Nilai, created_by)
+     VALUES ${valuesSql}`,
     params
   );
 }
 
 async function getEvaluationsByPeriode(periodeId) {
-  return querySpk(
-    `SELECT Id, KaryawanId, KpiId, PeriodeId, Realisasi, Achievement, Nilai, created_by
-     FROM penilaians
-     WHERE PeriodeId = ?`,
-    [periodeId]
-  );
+  try {
+    const rows = await querySpk(
+      `SELECT Id, KaryawanId, KpiId, PeriodeId, Realisasi, Achievement, Nilai, created_by
+       FROM penilaians
+       WHERE PeriodeId = ?`,
+      [periodeId]
+    );
+
+    return Array.isArray(rows) ? rows : [];
+  } catch (err) {
+    console.error("MOORA getEvaluationsByPeriode error:", err);
+    return [];
+  }
 }
 
 async function saveAchievement(periodeId, karyawanId, kpiId, achievement) {
