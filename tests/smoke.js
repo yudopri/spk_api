@@ -40,12 +40,12 @@ function runMooraTest() {
     { KaryawanId: 102, KpiId: 2, Nilai: 5 }
   ];
 
-  const yi = scoreMooraChunk(chunk, coeffMap);
-  if (!(yi[101] > yi[102])) {
+  const { yiByEmployee } = scoreMooraChunk(chunk, coeffMap);
+  if (!(yiByEmployee[101] > yiByEmployee[102])) {
     throw new Error("MOORA score ordering unexpected");
   }
 
-  return yi;
+  return yiByEmployee;
 }
 
 function main() {
