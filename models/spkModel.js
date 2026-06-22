@@ -271,8 +271,17 @@ async function getAttributes(options = {}) {
 
 async function createKpi(data) {
   const result = await querySpk(
-    `INSERT INTO kpis(NamaKpi, Tipe, Target, IsActive, PeriodeId, BobotAhp, attributeId, group_id)
-     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO kpis(
+  NamaKpi,
+  Tipe,
+  Target,
+  IsActive,
+  PeriodeId,
+  BobotAhp,
+  attributeId,
+  group_id
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.NamaKpi,
       data.Tipe,
