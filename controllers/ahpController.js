@@ -1,72 +1,80 @@
 const { querySpk } = require("../config/db");
-const { calculateAHP } = require("../services/spkMath");
+const { getKpis, getEvaluationsByPeriode, getEmployeesByIds } = require("../models/spkModel");
+const { calculateAHP, validatePairwiseComparisons, buildMooraCoeffMap, scoreMooraChunk } = require("../services/spkMath");
 
-/**
- * Controller for AHP and Ranking logic as per Senior Developer requirements.
- */
-
-/**
- * 3. Endpoint Hitung AHP & Live CR
- * POST /api/ahp/calculate-cr
- * Input Body: { criteriaIds: [1, 2, 3], comparisons: [{ a: 1, b: 2, value: 3 }, ...] }
- */
 async function calculateAhpLive(req, res) {
   try {
-    const { criteriaIds, comparisons } = req.body;
+    const { criteriaIds, comparisons } = req.body || {};
 
-    if (!criteriaIds || !Array.isArray(criteriaIds) || criteriaIds.length === 0) {
-      return res.status(400).json({ success: false, message: "criteriaIds is required and must be an array." });
+    if (!Array.isArray(criteriaIds) || criteriaIds.length === 0) {
+      return res.status(400).json({ success: false, message: "criteriaIds wajib diisi" });
+    }
+    if (!Array.isArray(comparisons) || comparisons.length === 0) {
+      return res.status(400).json({ success: false, message: "comparisons wajib diisi" });
     }
 
-    // Adapt input to match spkMath.calculateAHP expectations
-    const kpis = criteriaIds.map(id => ({ Id: id }));
-    const adaptComps = comparisons.map(c => ({
+    const validation = validatePairwiseComparisons(
+      comparisons.map((c) => ({ KpiAId: c.a, KpiBId: c.b, Nilai: c.value })),
+      criteriaIds
+    );
+    if (!validation.valid) {
+      return res.status(400).json({ success: false, message: validation.message });
+    }
+
+    const kpis = criteriaIds.map((id) => ({ Id: id }));
+    const adaptComps = comparisons.map((c) => ({
       KpiAId: c.a,
       KpiBId: c.b,
       Nilai: c.value
     }));
 
     const result = calculateAHP(kpis, adaptComps);
+    if (!result.consistency.isConsistent) {
+      return res.status(400).json({
+        success: false,
+        message: "Matriks AHP tidak konsisten. Silakan input ulang.",
+        consistency: result.consistency
+      });
+    }
 
     return res.json({
       success: true,
       cr: result.consistency.cr,
       isConsistent: result.consistency.isConsistent,
       draftWeights: criteriaIds.map((id, idx) => ({
-        id: id,
+        id,
         weight: result.weights[idx]
       })),
-      consistencyDetails: result.consistency
+      consistencyDetails: result.consistency,
+      normalizedMatrix: result.normalizedMatrix
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
 }
 
-/**
- * Validate AHP Matrix without saving to database.
- * Used for real-time consistency feedback (CR).
- * POST /api/spk/ahp/validate-matrix
- */
 async function validateAhpMatrix(req, res) {
   try {
-    const { comparisons } = req.body; // [{id_a, id_b, nilai}, ...]
-
-    if (!comparisons || !Array.isArray(comparisons) || comparisons.length === 0) {
+    const { comparisons } = req.body || {};
+    if (!Array.isArray(comparisons) || comparisons.length === 0) {
       return res.status(400).json({ success: false, message: "Comparisons array is required." });
     }
 
-    // Extract unique IDs
-    const criteriaIds = [...new Set(comparisons.flatMap(c => [c.id_a, c.id_b]))];
+    const criteriaIds = [...new Set(comparisons.flatMap((c) => [c.id_a, c.id_b]))];
+    const validation = validatePairwiseComparisons(
+      comparisons.map((c) => ({ KpiAId: c.id_a, KpiBId: c.id_b, Nilai: c.nilai })),
+      criteriaIds
+    );
+    if (!validation.valid) {
+      return res.status(400).json({ success: false, message: validation.message });
+    }
 
-    // Adapt input to match spkMath.calculateAHP expectations
-    const kpis = criteriaIds.map(id => ({ Id: id }));
-    const adaptComps = comparisons.map(c => ({
+    const kpis = criteriaIds.map((id) => ({ Id: id }));
+    const adaptComps = comparisons.map((c) => ({
       KpiAId: c.id_a,
       KpiBId: c.id_b,
       Nilai: c.nilai
     }));
-
     const result = calculateAHP(kpis, adaptComps);
 
     return res.json({
@@ -79,96 +87,58 @@ async function validateAhpMatrix(req, res) {
   }
 }
 
-/**
- * 4. Endpoint Perankingan
- * GET /api/ranking/:periode_id
- * Executes final ranking based on (Decision Matrix * KPI_Periode Weights)
- */
 async function getRankingByPeriod(req, res) {
   try {
-    const { periode_id } = req.params;
-
-    // 1. Get KPI Snapshot for this period (Weights)
-    // Joining with kpi_masters to get names for the details
-    const kpiSnapshots = await querySpk(
-      `SELECT kp.id, kp.kpi_master_id, kp.bobot_ahp, km.nama_kriteria 
-       FROM kpi_periodes kp
-       JOIN kpi_masters km ON kp.kpi_master_id = km.id
-       WHERE kp.periode_id = ? AND kp.status_aktif = TRUE`,
-      [periode_id]
-    );
-
-    if (kpiSnapshots.length === 0) {
-      return res.status(404).json({ success: false, message: "No active KPIs found for this period." });
+    const periodeId = Number(req.params.periode_id);
+    if (!Number.isFinite(periodeId) || periodeId <= 0) {
+      return res.status(400).json({ success: false, message: "periode_id tidak valid" });
     }
 
-    // Map weights and names for easy access
-    const weightMap = {};
-    kpiSnapshots.forEach(k => {
-      weightMap[k.id] = {
-        weight: parseFloat(k.bobot_ahp || 0),
-        nama: k.nama_kriteria
-      };
-    });
+    const kpisMeta = await getKpis(periodeId);
+    const kpis = kpisMeta.rows;
+    const rows = await getEvaluationsByPeriode(periodeId);
+    const employeeIds = [...new Set(rows.map((row) => Number(row.KaryawanId)))];
 
-    // 2. Get All Evaluations for this period
-    // Join with employees to get names
-    const evaluations = await querySpk(
-      `SELECT p.karyawan_id, e.nama as nama_karyawan, p.kpi_periode_id, p.nilai_karyawan 
-       FROM penilaians p
-       JOIN employees e ON p.karyawan_id = e.id
-       WHERE p.kpi_periode_id IN (?)`,
-      [kpiSnapshots.map(k => k.id)]
+    if (kpis.length === 0 || employeeIds.length === 0) {
+      return res.status(404).json({ success: false, message: "Data KPI atau penilaian tidak ditemukan" });
+    }
+
+    const denominatorRows = await querySpk(
+      `SELECT KpiId, SQRT(SUM(Achievement * Achievement)) AS denominator
+       FROM penilaians
+       WHERE PeriodeId = ?
+       GROUP BY KpiId`,
+      [periodeId]
     );
 
-    // 3. Group by Employee and Calculate Final Score
-    const rankingMap = {};
+    const denominatorMap = {};
+    denominatorRows.forEach((row) => {
+      denominatorMap[row.KpiId] = Number(row.denominator) || 1;
+    });
 
-    evaluations.forEach(ev => {
-      if (!rankingMap[ev.karyawan_id]) {
-        rankingMap[ev.karyawan_id] = {
-          id: ev.karyawan_id,
-          nama: ev.nama_karyawan,
-          totalScore: 0,
-          nilai_akhir: 0, 
-          nilai_optimasi: 0, // Align with hasil_akhir table naming
-          details: []
+    const coeffMap = buildMooraCoeffMap(kpis, denominatorMap);
+    const partial = scoreMooraChunk(rows, coeffMap);
+
+    const employees = await getEmployeesByIds(employeeIds);
+    const employeeMap = new Map(employees.map((emp) => [Number(emp.id), emp]));
+
+    const ranked = Object.entries(partial.yiByEmployee)
+      .map(([employeeId, yi]) => {
+        const employee = employeeMap.get(Number(employeeId));
+        return {
+          employeeId: Number(employeeId),
+          employeeName: employee?.name || null,
+          yi: Number(yi),
+          detail: partial.detailByEmployee[employeeId] || []
         };
-      }
-      
-      const kpiInfo = weightMap[ev.kpi_periode_id] || { weight: 0, nama: "Unknown" };
-      const weight = kpiInfo.weight;
-      const score = parseFloat(ev.nilai_karyawan || 0);
-      const weightedScore = score * weight;
-      
-      rankingMap[ev.karyawan_id].totalScore += weightedScore;
-      rankingMap[ev.karyawan_id].details.push({
-        kpi_periode_id: ev.kpi_periode_id,
-        nama_kriteria: kpiInfo.nama,
-        score: score,
-        weight: weight,
-        weightedScore: weightedScore
-      });
-    });
-
-    // 4. Sort by Score descending and finalize nilai_akhir/nilai_optimasi
-    const finalRanking = Object.values(rankingMap).map(item => {
-      // Round to 4 decimal places for cleanliness
-      item.totalScore = Math.round(item.totalScore * 10000) / 10000;
-      item.nilai_akhir = item.totalScore;
-      item.nilai_optimasi = item.totalScore;
-      return item;
-    }).sort((a, b) => b.totalScore - a.totalScore);
-
-    // Add rank number
-    finalRanking.forEach((item, index) => {
-      item.rank = index + 1;
-    });
+      })
+      .sort((a, b) => b.yi - a.yi)
+      .map((item, index) => ({ ...item, rank: index + 1 }));
 
     return res.json({
       success: true,
-      periode_id: parseInt(periode_id),
-      data: finalRanking
+      periode_id: periodeId,
+      data: ranked
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });

@@ -1,8 +1,8 @@
 openapi: 3.0.0
 info:
   title: SPK API Express
-  description: API Express untuk SPK (AHP-MOORA) dengan dual database Mitra/SPK.
-  version: 2.0.0
+  description: API Express untuk SPK (Target-Realisasi-Achievement, AHP-MOORA) dengan dual database Mitra/SPK.
+  version: 2.1.0
 servers:
   - url: /
     description: Local server
@@ -52,6 +52,57 @@ components:
       properties:
         data: { type: array, items: { type: object } }
         meta: { $ref: '#/components/schemas/Meta' }
+
+    KPI:
+      type: object
+      properties:
+        Id: { type: integer }
+        NamaKpi: { type: string }
+        Deskripsi: { type: string, nullable: true }
+        Target: { type: number }
+        Satuan: { type: string, nullable: true }
+        Tipe: { type: string, enum: [benefit, cost] }
+        IsActive: { type: boolean }
+        BobotAhp: { type: number, nullable: true }
+        PeriodeId: { type: integer }
+
+    AssessmentInput:
+      type: object
+      properties:
+        KaryawanId: { type: integer }
+        KpiId: { type: integer }
+        PeriodeId: { type: integer }
+        Nilai:
+          type: number
+          description: Legacy alias for Realisasi during transition
+        Realisasi:
+          type: number
+          description: Current field used internally
+
+    AHPComparisonInput:
+      type: object
+      properties:
+        PeriodeId: { type: integer }
+        KpiAId: { type: integer }
+        KpiBId: { type: integer }
+        Nilai: { type: number }
+
+    HasilMoora:
+      type: object
+      properties:
+        Id: { type: integer }
+        KaryawanId: { type: integer }
+        PeriodeId: { type: integer }
+        NilaiOptimasi: { type: number }
+        NilaiSkala: { type: number }
+        Ranking: { type: integer }
+        created_by: { type: integer, nullable: true }
+        approved_by: { type: integer, nullable: true }
+        status: { type: string }
+        catatan:
+          type: object
+          nullable: true
+          description: Snapshot JSON perhitungan MOORA
 
 paths:
   /api/auth/login:
@@ -273,7 +324,9 @@ paths:
                 DivisiId: { type: integer }
                 TanggalMulai: { type: string, format: date-time }
                 TanggalSelesai: { type: string, format: date-time }
-                Status: { type: string }
+                Status:
+                  type: string
+                  enum: [draft, open, processed, locked]
       responses:
         '200':
           description: Created
@@ -291,8 +344,17 @@ paths:
       requestBody:
         content:
           application/json:
-            schema:
+              schema:
               type: object
+              properties:
+                NamaPeriode: { type: string }
+                Tahun: { type: integer }
+                DivisiId: { type: integer, nullable: true }
+                TanggalMulai: { type: string, format: date-time, nullable: true }
+                TanggalSelesai: { type: string, format: date-time, nullable: true }
+                Status:
+                  type: string
+                  enum: [draft, open, processed, locked]
       responses:
         '200':
           description: Updated
@@ -419,15 +481,20 @@ paths:
       requestBody:
         content:
           application/json:
-            schema:
+              schema:
               type: object
               properties:
                 NamaKpi: { type: string }
-                Tipe: { type: string, enum: [Benefit, Cost] }
+                Deskripsi: { type: string, nullable: true }
+                Target: { type: number }
+                Satuan: { type: string, nullable: true }
+                Tipe: { type: string, enum: [benefit, cost] }
+                IsActive: { type: boolean, default: true }
                 PeriodeId: { type: integer }
                 id_satuan: { type: integer, nullable: true }
                 attributeId: { type: integer, nullable: true }
                 group_id: { type: integer, nullable: true }
+              required: [NamaKpi, Target, Tipe, PeriodeId]
       responses:
         '200':
           description: Created
@@ -448,6 +515,12 @@ paths:
             schema:
               type: object
               properties:
+                NamaKpi: { type: string }
+                Deskripsi: { type: string, nullable: true }
+                Target: { type: number }
+                Satuan: { type: string, nullable: true }
+                Tipe: { type: string, enum: [benefit, cost] }
+                IsActive: { type: boolean }
                 group_id: { type: integer, nullable: true }
       responses:
         '200':
@@ -605,12 +678,7 @@ paths:
             schema:
               type: array
               items:
-                type: object
-                properties:
-                  PeriodeId: { type: integer }
-                  KpiAId: { type: integer }
-                  KpiBId: { type: integer }
-                  Nilai: { type: number }
+                $ref: '#/components/schemas/AHPComparisonInput'
       responses:
         '200':
           description: Saved
@@ -631,7 +699,7 @@ paths:
 
   /api/spk/moora/penilaian:
     post:
-      summary: Save MOORA score inputs
+      summary: Save realisasi KPI inputs and auto-calculate achievement
       tags: [MOORA]
       security: [{ bearerAuth: [] }]
       requestBody:
@@ -640,12 +708,7 @@ paths:
             schema:
               type: array
               items:
-                type: object
-                properties:
-                  KaryawanId: { type: integer }
-                  KpiId: { type: integer }
-                  PeriodeId: { type: integer }
-                  Nilai: { type: number }
+                $ref: '#/components/schemas/AssessmentInput'
       responses:
         '200':
           description: Saved
@@ -753,11 +816,15 @@ paths:
         required: true
         content:
           application/json:
-            schema:
+              schema:
               type: object
               properties:
-                status: { type: string, enum: [Draft, Pending, Reviewed] }
-                catatan: { type: string }
+                status:
+                  type: string
+                  enum: [Draft, Pending, Reviewed, Processed, Locked]
+                prestasi: { type: string, nullable: true }
+                indisipliner: { type: string, nullable: true }
+                saran: { type: string, nullable: true }
       responses:
         '200':
           description: Review saved success

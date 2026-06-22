@@ -11,12 +11,16 @@ const {
   createKpi,
   updateKpi,
   deleteKpi,
+  getKpiMetadata,
+  getTargetByKpi,
   getComparisons,
   replaceComparisons,
   updateKpiWeights,
   replaceEvaluations,
   clearHasilAkhir,
   insertHasilAkhirBatch,
+  saveAchievement,
+  saveMooraSnapshot,
   getHasilAkhirByPeriode,
   getEmployeesByIds,
   getDepartments,
@@ -27,6 +31,9 @@ const {
   getEmployeeByUserId,
   getEmployeeLocationsByIds,
   getDistinctKaryawanIdsByPeriode,
+  getPenilaianSummaryByPeriode,
+  getDistinctKpiIdsByPeriode,
+  validateAssessmentCompleteness,
   getEvaluationChunk,
   getEvaluationsByPeriode,
   getAuditLogs,
@@ -41,7 +48,14 @@ const {
   queryMitra
 } = require("../models/spkModel");
 const { querySpk } = require("../config/db");
-const { calculateAHP, buildMooraCoeffMap, scoreMooraChunk, solveAhpMatrix } = require("../services/spkMath");
+const {
+  calculateAHP,
+  calculateAchievement,
+  buildMooraCoeffMap,
+  scoreMooraChunk,
+  solveAhpMatrix,
+  validatePairwiseComparisons
+} = require("../services/spkMath");
 const {
   isAdminAdmViewOnlyRole,
   isEmployeeRole,
@@ -118,6 +132,40 @@ function formatMeta(options, total) {
     pageSize,
     totalPages: Math.ceil(total / (pageSize || 1))
   };
+}
+
+function normalizeKpiType(value) {
+  return String(value || "benefit").toLowerCase() === "cost" ? "cost" : "benefit";
+}
+
+function buildAssessmentSnapshotRow({ periodeId, employeeId, kpiMeta, realisasi, achievement, rank, yi }) {
+  return {
+    kpi_id: Number(kpiMeta.Id),
+    nama_kpi: kpiMeta.NamaKpi,
+    target: Number(kpiMeta.Target || 0),
+    realisasi: Number(realisasi || 0),
+    achievement: Number(achievement || 0),
+    weight_ahp: Number(kpiMeta.BobotAhp || 0),
+    weight_group: Number(kpiMeta.bobot_grup || 0),
+    jenis: normalizeKpiType(kpiMeta.Tipe),
+    periode_id: Number(periodeId),
+    karyawan_id: Number(employeeId),
+    yi: Number(yi || 0),
+    rank: Number(rank || 0)
+  };
+}
+
+async function assertPeriodNotLocked(res, periodeId) {
+  if (!periodeId) return true;
+  const period = await getPeriodeById(Number(periodeId));
+  if (String(period?.Status || "").toLowerCase() === "locked") {
+    res.status(403).json({
+      success: false,
+      message: "Data pada periode ini sudah terkunci dan tidak dapat diubah."
+    });
+    return false;
+  }
+  return true;
 }
 
 function canOnlyViewOwnDivision(role) {
@@ -208,6 +256,8 @@ async function createPeriodeHandler(req, res) {
     data.DivisiId = null;
   }
 
+  if (!(await assertPeriodNotLocked(res, data.PeriodeId))) return;
+
   if (req.user?.role === "Kadiv") {
     data.DivisiId = Number(req.user?.dept_id || 0) || data.DivisiId;
   }
@@ -223,6 +273,14 @@ async function updatePeriodeHandler(req, res) {
     const existing = await getPeriodeById(periodeId);
     if (!existing) {
       return res.status(404).json({ success: false, message: "Periode tidak ditemukan" });
+    }
+
+    const existingStatus = String(existing.Status || "").toLowerCase();
+    if (existingStatus === "locked") {
+      const requestedStatus = String(req.body?.Status ?? req.body?.status ?? "").toLowerCase();
+      if (requestedStatus !== "locked") {
+        return res.status(403).json({ success: false, message: "Periode terkunci tidak dapat diubah" });
+      }
     }
 
     if (!canAccessPeriodeForUser(req.user, existing)) {
@@ -296,6 +354,10 @@ async function deletePeriodeHandler(req, res) {
     return res.status(404).json({ success: false, message: "Periode tidak ditemukan" });
   }
 
+  if (String(existing.Status || "").toLowerCase() === "locked") {
+    return res.status(403).json({ success: false, message: "Periode terkunci tidak dapat dihapus" });
+  }
+
   if (!canAccessPeriodeForUser(req.user, existing)) {
     return res.status(403).json({ success: false, message: "Tidak boleh menghapus periode lintas divisi" });
   }
@@ -334,6 +396,8 @@ async function getKpiHandler(req, res) {
         Id: k.Id,
         NamaKpi: k.NamaKpi,
         Tipe: k.Tipe,
+        Target: k.Target,
+        IsActive: k.IsActive,
         BobotAhp: k.BobotAhp,
         PeriodeId: k.PeriodeId,
         attributeId: k.attributeId || null,
@@ -357,6 +421,9 @@ async function createKpiHandler(req, res) {
 
   const data = req.body || {};
   data.attributeId = data.id_satuan ?? data.attributeId ?? null;
+  if (data.Target !== undefined && Number(data.Target) <= 0) {
+    return res.status(400).json({ success: false, message: "Target KPI harus lebih besar dari 0" });
+  }
   if (req.user?.role === "Kadiv") {
     const periode = await getPeriodeById(Number(data.PeriodeId || 0));
     if (!canAccessPeriodeForUser(req.user, periode)) {
@@ -426,6 +493,9 @@ async function updateKpiHandler(req, res) {
   }
 
   const existingPeriode = await getPeriodeById(Number(existing.PeriodeId));
+  if (String(existingPeriode?.Status || "").toLowerCase() === "locked") {
+    return res.status(403).json({ success: false, message: "KPI pada periode terkunci tidak dapat diubah" });
+  }
   if (!canAccessPeriodeForUser(req.user, existingPeriode)) {
     return res.status(403).json({ success: false, message: "Tidak boleh mengubah KPI lintas divisi" });
   }
@@ -437,6 +507,9 @@ async function updateKpiHandler(req, res) {
   if (!canAccessPeriodeForUser(req.user, targetPeriode)) {
     return res.status(403).json({ success: false, message: "Tidak boleh memindahkan KPI ke periode lintas divisi" });
   }
+  if (payload.Target !== undefined && Number(payload.Target) <= 0) {
+    return res.status(400).json({ success: false, message: "Target KPI harus lebih besar dari 0" });
+  }
 
   await updateKpi(kpiId, {
     NamaKpi: payload.NamaKpi || existing.NamaKpi,
@@ -444,6 +517,8 @@ async function updateKpiHandler(req, res) {
     PeriodeId: targetPeriodeId,
     attributeId: targetAttributeId,
     BobotAhp: payload.BobotAhp ?? existing.BobotAhp,
+    Target: payload.Target ?? existing.Target,
+    IsActive: payload.IsActive ?? existing.IsActive,
     group_id: payload.group_id ?? existing.group_id
   });
 
@@ -460,6 +535,9 @@ async function deleteKpiHandler(req, res) {
   }
 
   const existingPeriode = await getPeriodeById(Number(existing.PeriodeId));
+  if (String(existingPeriode?.Status || "").toLowerCase() === "locked") {
+    return res.status(403).json({ success: false, message: "KPI pada periode terkunci tidak dapat dihapus" });
+  }
   if (!canAccessPeriodeForUser(req.user, existingPeriode)) {
     return res.status(403).json({ success: false, message: "Tidak boleh menghapus KPI lintas divisi" });
   }
@@ -489,6 +567,7 @@ async function createKpiGroupHandler(req, res) {
   if (!nama_grup || !periode_id) {
     return res.status(400).json({ success: false, message: "Nama grup dan Periode ID wajib diisi" });
   }
+  if (!(await assertPeriodNotLocked(res, periode_id))) return;
   const id = await createKpiGroup({ nama_grup, periode_id, bobot_grup });
   await logActivity(req, "CREATE", "KpiGroup", { id, nama_grup });
   return res.json({ success: true, id });
@@ -497,6 +576,8 @@ async function createKpiGroupHandler(req, res) {
 async function updateKpiGroupHandler(req, res) {
   const { id } = req.params;
   const { nama_grup, bobot_grup } = req.body;
+  const existing = await querySpk("SELECT periode_id FROM kpi_groups WHERE id = ? LIMIT 1", [id]);
+  if (!(await assertPeriodNotLocked(res, existing[0]?.periode_id))) return;
   await updateKpiGroup(id, { nama_grup, bobot_grup });
   await logActivity(req, "UPDATE", "KpiGroup", { id, nama_grup });
   return res.json({ success: true, message: "Grup KPI berhasil diperbarui" });
@@ -504,6 +585,8 @@ async function updateKpiGroupHandler(req, res) {
 
 async function deleteKpiGroupHandler(req, res) {
   const { id } = req.params;
+  const existing = await querySpk("SELECT periode_id FROM kpi_groups WHERE id = ? LIMIT 1", [id]);
+  if (!(await assertPeriodNotLocked(res, existing[0]?.periode_id))) return;
   await deleteKpiGroup(id);
   await logActivity(req, "DELETE", "KpiGroup", { id });
   return res.json({ success: true, message: "Grup KPI berhasil dihapus" });
@@ -579,8 +662,16 @@ async function inputComparisonHandler(req, res) {
   }
 
   const periode = await getPeriodeById(Number(periodeId));
+  if (String(periode?.Status || "").toLowerCase() === "locked") {
+    return res.status(403).json({ success: false, message: "Periode terkunci, AHP tidak dapat diubah" });
+  }
   if (!canAccessPeriodeForUser(req.user, periode)) {
     return res.status(403).json({ success: false, message: "Tidak boleh input perbandingan lintas divisi" });
+  }
+
+  const validation = validatePairwiseComparisons(dataList, [...new Set(dataList.flatMap((item) => [item.KpiAId, item.KpiBId]))]);
+  if (!validation.valid) {
+    return res.status(400).json({ success: false, message: validation.message });
   }
 
   await replaceComparisons(periodeId, dataList);
@@ -592,6 +683,9 @@ async function calculateWeightsHandler(req, res) {
   try {
     const periodeId = Number(req.params.periode_id);
     const periode = await getPeriodeById(periodeId);
+    if (String(periode?.Status || "").toLowerCase() === "locked") {
+      return res.status(403).json({ success: false, message: "Periode terkunci, bobot tidak dapat dihitung ulang" });
+    }
     if (!canAccessPeriodeForUser(req.user, periode)) {
       return res.status(403).json({ success: false, message: "Tidak boleh menghitung bobot lintas divisi" });
     }
@@ -605,6 +699,14 @@ async function calculateWeightsHandler(req, res) {
     }
 
     const ahp = calculateAHP(kpis, comps);
+    if (!ahp.consistency.isConsistent || Number(ahp.consistency.cr) > 0.1) {
+      return res.status(400).json({
+        success: false,
+        message: "Matriks AHP tidak konsisten. Silakan ulangi input perbandingan.",
+        consistency: ahp.consistency
+      });
+    }
+
     const weightByKpiId = {};
     kpis.forEach((kpi, idx) => {
       weightByKpiId[kpi.Id] = Number(ahp.weights[idx]);
@@ -632,8 +734,40 @@ async function inputPenilaianHandler(req, res) {
   const periodeId = evals[0].PeriodeId;
 
   const periode = await getPeriodeById(Number(periodeId));
+  if (String(periode?.Status || "").toLowerCase() === "locked") {
+    return res.status(403).json({ success: false, message: "Periode terkunci, penilaian tidak dapat diubah" });
+  }
   if (!canAccessPeriodeForUser(req.user, periode)) {
     return res.status(403).json({ success: false, message: "Tidak boleh input penilaian lintas divisi" });
+  }
+
+  const activeKpisMeta = await getKpis(Number(periodeId));
+  const activeKpiIds = activeKpisMeta.rows.map((row) => Number(row.Id));
+  const uniquePairs = new Set(evals.map((item) => `${Number(item.KaryawanId)}:${Number(item.KpiId)}`));
+  if (uniquePairs.size !== evals.length) {
+    return res.status(400).json({ success: false, message: "Terdapat KPI duplikat dalam satu penilaian" });
+  }
+
+  const payloadKpiIds = [...new Set(evals.map((item) => Number(item.KpiId)).filter(Number.isFinite))];
+  const missingKpis = activeKpiIds.filter((id) => !payloadKpiIds.includes(id));
+  if (missingKpis.length > 0) {
+    return res.status(400).json({
+      success: false,
+      message: "Matriks penilaian belum lengkap. Ada KPI aktif yang belum diinput.",
+      missing_kpi_ids: missingKpis
+    });
+  }
+
+  const summary = await getPenilaianSummaryByPeriode(Number(periodeId));
+  const incompleteEmployees = summary
+    .filter((row) => Number(row.kpi_count) !== activeKpiIds.length)
+    .map((row) => Number(row.KaryawanId));
+  if (incompleteEmployees.length > 0) {
+    return res.status(400).json({
+      success: false,
+      message: "Ada karyawan yang belum memiliki nilai lengkap untuk seluruh KPI aktif.",
+      missing_employee_ids: incompleteEmployees
+    });
   }
 
   if (req.user?.role === "Kadiv") {
@@ -652,9 +786,73 @@ async function inputPenilaianHandler(req, res) {
     }
   }
 
-  await replaceEvaluations(periodeId, evals);
-  await logActivity(req, "CREATE/UPDATE", "MooraPenilaian", { PeriodeId: periodeId, Count: evals.length });
-  return res.json({ success: true, message: "Data penilaian MOORA berhasil disimpan" });
+  const normalized = [];
+
+  for (const item of evals) {
+    const kpiId = Number(item.KpiId);
+    const kpiMeta = await getTargetByKpi(periodeId, kpiId);
+    if (!kpiMeta) {
+      return res.status(400).json({ success: false, message: `KPI ${kpiId} tidak ditemukan pada periode ini` });
+    }
+
+    const realisasi = Number(item.Realisasi ?? item.Nilai);
+    if (!Number.isFinite(realisasi) || realisasi < 0) {
+      return res.status(400).json({ success: false, message: "Realisasi tidak valid" });
+    }
+
+    const achievementResult = calculateAchievement({
+      target: kpiMeta.Target,
+      realisasi,
+      tipe: kpiMeta.Tipe
+    });
+
+    if (!achievementResult.valid) {
+      return res.status(400).json({ success: false, message: achievementResult.message });
+    }
+
+    normalized.push({
+      KaryawanId: Number(item.KaryawanId),
+      KpiId: kpiId,
+      PeriodeId: Number(periodeId),
+      Realisasi: realisasi,
+      Achievement: achievementResult.achievement,
+      created_by: Number(req.user?.sub || 0),
+      Nilai: realisasi
+    });
+  }
+
+  await replaceEvaluations(periodeId, normalized);
+  for (const row of normalized) {
+    await saveAchievement(periodeId, row.KaryawanId, row.KpiId, row.Achievement);
+  }
+
+  await logActivity(req, "CREATE/UPDATE", "MooraPenilaian", { PeriodeId: periodeId, Count: normalized.length });
+  return res.json({ success: true, message: "Data penilaian berhasil disimpan", mapped_field: "Nilai/Realisasi -> Achievement" });
+}
+
+async function persistMooraResultSnapshots(periodeId, kpis, rankedResults, detailMap) {
+  for (const row of rankedResults) {
+    const snapshotRows = (detailMap[row.employeeId] || []).map((detail) => {
+      const kpiMeta = kpis.find((k) => Number(k.Id) === Number(detail.KpiId));
+      if (!kpiMeta) return null;
+      return buildAssessmentSnapshotRow({
+        periodeId,
+        employeeId: row.employeeId,
+        kpiMeta,
+        realisasi: detail.NilaiAsli,
+        achievement: detail.NilaiAsli,
+        rank: row.rank,
+        yi: row.yi
+      });
+    }).filter(Boolean);
+
+    await saveMooraSnapshot(periodeId, row.employeeId, JSON.stringify({
+      periode_id: periodeId,
+      ranking: row.rank,
+      yi: row.yi,
+      details: snapshotRows
+    }));
+  }
 }
 
 function chunkArray(items, chunkSize) {
@@ -669,6 +867,9 @@ async function calculateMooraHandler(req, res) {
   try {
     const periodeId = Number(req.params.periode_id);
     const periode = await getPeriodeById(periodeId);
+    if (String(periode?.Status || "").toLowerCase() === "locked") {
+      return res.status(403).json({ success: false, message: "Periode terkunci, MOORA tidak dapat diproses ulang" });
+    }
     if (!canAccessPeriodeForUser(req.user, periode)) {
       return res.status(403).json({ success: false, message: "Tidak boleh menghitung ranking lintas divisi" });
     }
@@ -681,8 +882,40 @@ async function calculateMooraHandler(req, res) {
       return res.status(400).json({ success: false, message: "Data tidak mencukupi" });
     }
 
+    const summary = await getPenilaianSummaryByPeriode(periodeId);
+    const activeKpiIds = kpis.map((kpi) => Number(kpi.Id));
+    const activeKpiCount = activeKpiIds.length;
+    const incompleteEmployees = summary
+      .filter((row) => Number(row.kpi_count) !== activeKpiCount)
+      .map((row) => Number(row.KaryawanId));
+    if (incompleteEmployees.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: "MOORA dibatalkan karena matriks keputusan tidak lengkap.",
+        incomplete_employee_ids: incompleteEmployees
+      });
+    }
+
+    const distinctKpiIds = await getDistinctKpiIdsByPeriode(periodeId);
+    const missingKpis = activeKpiIds.filter((id) => !distinctKpiIds.includes(id));
+    if (missingKpis.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: "MOORA dibatalkan karena ada KPI aktif yang belum memiliki nilai.",
+        missing_kpi_ids: missingKpis
+      });
+    }
+
+    const hasWeights = kpis.every((kpi) => Number(kpi.BobotAhp) > 0);
+    if (!hasWeights) {
+      return res.status(400).json({
+        success: false,
+        message: "Bobot AHP belum tersedia. Jalankan perhitungan AHP terlebih dahulu."
+      });
+    }
+
     const denominatorRows = await querySpk(
-      `SELECT KpiId, SQRT(SUM(Nilai * Nilai)) AS denominator
+      `SELECT KpiId, SQRT(SUM(Achievement * Achievement)) AS denominator
      FROM penilaians
      WHERE PeriodeId = ?
      GROUP BY KpiId`,
@@ -696,13 +929,16 @@ async function calculateMooraHandler(req, res) {
 
     const coeffMap = buildMooraCoeffMap(kpis, denominatorMap);
     const yiMap = {};
+    const detailMap = {};
 
     const chunks = chunkArray(employeeIds, Number(process.env.MOORA_BATCH_SIZE || 500));
     for (const employeeChunk of chunks) {
       const evaluations = await getEvaluationChunk(periodeId, employeeChunk);
       const partial = scoreMooraChunk(evaluations, coeffMap);
-      for (const [employeeId, yi] of Object.entries(partial)) {
+      for (const [employeeId, yi] of Object.entries(partial.yiByEmployee)) {
         yiMap[employeeId] = (yiMap[employeeId] || 0) + yi;
+        if (!detailMap[employeeId]) detailMap[employeeId] = [];
+        detailMap[employeeId].push(...(partial.detailByEmployee[employeeId] || []));
       }
     }
 
@@ -716,16 +952,34 @@ async function calculateMooraHandler(req, res) {
       KaryawanId: row.employeeId,
       PeriodeId: periodeId,
       NilaiOptimasi: row.yi,
-      NilaiSkala: Math.round(row.yi * 10000) / 100,
+      NilaiSkala: Math.round(row.yi * 10000) / 10000,
       Ranking: index + 1,
       created_by: Number(req.user?.sub || 0),
-      status: "Draft"
+      status: "Processed",
+      catatan: JSON.stringify({
+        periode_id: periodeId,
+        kpis: kpis.map((kpi) => ({
+          kpi_id: kpi.Id,
+          nama_kpi: kpi.NamaKpi,
+          jenis: String(kpi.Tipe || "").toLowerCase(),
+          target: Number(kpi.Target || 0),
+          bobot_ahp: Number(kpi.BobotAhp || 0),
+          satuan: kpi.simbol || kpi.nama_satuan || null
+        })),
+        hasil_moora: detailMap[row.employeeId] || [],
+        yi: row.yi,
+        ranking: index + 1
+      })
     }));
 
     const insertChunks = chunkArray(resultRows, Number(process.env.INSERT_BATCH_SIZE || 500));
     for (const resultChunk of insertChunks) {
       await insertHasilAkhirBatch(resultChunk);
     }
+
+    await persistMooraResultSnapshots(periodeId, kpis, ranked.map((row, index) => ({ ...row, rank: index + 1 })), detailMap);
+
+    await querySpk("UPDATE periodes SET Status = 'Processed' WHERE Id = ?", [periodeId]);
 
     await logActivity(req, "CALCULATE", "MooraResult", { PeriodeId: periodeId, Count: resultRows.length });
     return res.json({ success: true, message: "Perangkingan MOORA selesai" });
@@ -1010,7 +1264,7 @@ async function getIndividualReportHandler(req, res) {
         // Ensure values are strings
         const kriteria = String(item.Kriteria || "");
         const nilai = String(item.Nilai || 0);
-        const satuan = String(item.Satuan || "");
+        const satuan = String(item.nama_satuan || "");
 
         page.drawText(`${idx + 1}`, { x: 50, y: yPos, size: 10, font });
         page.drawText(kriteria, { x: 80, y: yPos, size: 10, font });
@@ -1177,8 +1431,8 @@ async function updateHasilReviewHandler(req, res) {
   const { id } = req.params;
   const { status, prestasi, indisipliner, saran } = req.body;
 
-  if (status && !["Draft", "Pending", "Reviewed"].includes(status)) {
-    return res.status(400).json({ success: false, message: "Status tidak valid. Gunakan Draft, Pending, atau Reviewed." });
+  if (status && !["Draft", "Pending", "Reviewed", "Processed", "Locked"].includes(status)) {
+    return res.status(400).json({ success: false, message: "Status tidak valid." });
   }
 
   // Format catatan as JSON string
@@ -1188,6 +1442,9 @@ async function updateHasilReviewHandler(req, res) {
     s: (saran || "").trim()
   };
   const catatanJson = JSON.stringify(catatanObj);
+
+  const resultRows = await querySpk("SELECT PeriodeId FROM hasil_akhir WHERE Id = ? LIMIT 1", [id]);
+  if (!(await assertPeriodNotLocked(res, resultRows[0]?.PeriodeId))) return;
 
   await updateHasilAkhirStatus(id, { status, catatan: catatanJson });
   await logActivity(req, "REVIEW", "MooraResult", { Id: id, Status: status, Catatan: catatanObj });

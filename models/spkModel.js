@@ -190,7 +190,7 @@ async function updateGroupWeights(periodeId, weightByGroupId) {
 
 async function getKpis(periodeId, options = {}) {
   let baseSql = `
-    SELECT k.Id, k.NamaKpi, k.Tipe, k.BobotAhp, k.PeriodeId, k.attributeId, k.group_id,
+    SELECT k.Id, k.NamaKpi, k.Tipe, k.Target, k.IsActive, k.BobotAhp, k.PeriodeId, k.attributeId, k.group_id,
            ms.nama AS nama_satuan, ms.simbol AS simbol,
            kg.nama_grup AS nama_grup, kg.bobot_grup AS bobot_grup
     FROM kpis k
@@ -211,9 +211,32 @@ async function getKpis(periodeId, options = {}) {
   return { rows, total: totalRes[0]?.total || 0 };
 }
 
+async function getKpiMetadata(periodeId) {
+  const rows = await querySpk(
+    `SELECT k.Id, k.PeriodeId, k.NamaKpi, k.Deskripsi, k.Tipe, k.Target, k.IsActive, k.BobotAhp, k.attributeId, k.group_id,
+            kg.bobot_grup AS bobot_grup
+     FROM kpis k
+     LEFT JOIN kpi_groups kg ON kg.id = k.group_id
+     WHERE k.PeriodeId = ?`,
+    [periodeId]
+  );
+  return rows;
+}
+
+async function getTargetByKpi(periodeId, kpiId) {
+  const rows = await querySpk(
+    `SELECT Target, Tipe
+     FROM kpis
+     WHERE PeriodeId = ? AND Id = ?
+     LIMIT 1`,
+    [periodeId, kpiId]
+  );
+  return rows[0] || null;
+}
+
 async function getKpisByDivision(divisiId, periodeId, options = {}) {
   let baseSql =
-    `SELECT k.Id, k.NamaKpi, k.Tipe, k.BobotAhp, k.PeriodeId, k.attributeId, k.group_id,
+    `SELECT k.Id, k.NamaKpi, k.Tipe, k.Target, k.IsActive, k.BobotAhp, k.PeriodeId, k.attributeId, k.group_id,
             ms.nama AS nama_satuan, ms.simbol AS simbol,
             kg.nama_grup AS nama_grup, kg.bobot_grup AS bobot_grup
      FROM kpis k
@@ -248,9 +271,18 @@ async function getAttributes(options = {}) {
 
 async function createKpi(data) {
   const result = await querySpk(
-    `INSERT INTO kpis(NamaKpi, Tipe, PeriodeId, BobotAhp, attributeId, group_id)
-     VALUES(?, ?, ?, ?, ?, ?)`,
-    [data.NamaKpi, data.Tipe, data.PeriodeId, data.BobotAhp || 0, data.attributeId || null, data.group_id || null]
+    `INSERT INTO kpis(NamaKpi, Tipe, Target, IsActive, PeriodeId, BobotAhp, attributeId, group_id)
+     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      data.NamaKpi,
+      data.Tipe,
+      data.Target || 0,
+      data.IsActive === undefined ? 1 : Number(Boolean(data.IsActive)),
+      data.PeriodeId,
+      data.BobotAhp || 0,
+      data.attributeId || null,
+      data.group_id || null
+    ]
   );
   return result.insertId;
 }
@@ -260,12 +292,24 @@ async function updateKpi(id, data) {
     `UPDATE kpis
      SET NamaKpi = ?,
          Tipe = ?,
+         Target = ?,
+         IsActive = ?,
          PeriodeId = ?,
          attributeId = ?,
          BobotAhp = ?,
          group_id = ?
      WHERE Id = ?`,
-    [data.NamaKpi, data.Tipe, data.PeriodeId, data.attributeId || null, data.BobotAhp || 0, data.group_id || null, id]
+    [
+      data.NamaKpi,
+      data.Tipe,
+      data.Target ?? 0,
+      data.IsActive === undefined ? 1 : Number(Boolean(data.IsActive)),
+      data.PeriodeId,
+      data.attributeId || null,
+      data.BobotAhp || 0,
+      data.group_id || null,
+      id
+    ]
   );
 }
 
@@ -319,13 +363,38 @@ async function replaceEvaluations(periodeId, evals) {
   }
 
   if (!evals.length) return;
-  const valuesSql = evals.map(() => "(?, ?, ?, ?)").join(",");
-  const params = evals.flatMap((ev) => [ev.KaryawanId, ev.KpiId, ev.PeriodeId, ev.Nilai]);
-  await querySpk(`INSERT INTO penilaians(KaryawanId, KpiId, PeriodeId, Nilai) VALUES ${valuesSql}`, params);
+  const valuesSql = evals.map(() => "(?, ?, ?, ?, ?, ?, ?)").join(",");
+  const params = evals.flatMap((ev) => [
+    ev.KaryawanId,
+    ev.KpiId,
+    ev.PeriodeId,
+    ev.Realisasi ?? ev.Nilai ?? 0,
+    ev.Achievement ?? 0,
+    ev.Nilai ?? ev.Realisasi ?? 0,
+    ev.created_by ?? null
+  ]);
+  await querySpk(
+    `INSERT INTO penilaians(KaryawanId, KpiId, PeriodeId, Realisasi, Achievement, Nilai, created_by) VALUES ${valuesSql}`,
+    params
+  );
 }
 
 async function getEvaluationsByPeriode(periodeId) {
-  return querySpk("SELECT Id, KaryawanId, KpiId, PeriodeId, Nilai FROM penilaians WHERE PeriodeId = ?", [periodeId]);
+  return querySpk(
+    `SELECT Id, KaryawanId, KpiId, PeriodeId, Realisasi, Achievement, Nilai, created_by
+     FROM penilaians
+     WHERE PeriodeId = ?`,
+    [periodeId]
+  );
+}
+
+async function saveAchievement(periodeId, karyawanId, kpiId, achievement) {
+  await querySpk(
+    `UPDATE penilaians
+     SET Achievement = ?
+     WHERE PeriodeId = ? AND KaryawanId = ? AND KpiId = ?`,
+    [achievement, periodeId, karyawanId, kpiId]
+  );
 }
 
 async function clearHasilAkhir(periodeId) {
@@ -334,7 +403,7 @@ async function clearHasilAkhir(periodeId) {
 
 async function insertHasilAkhirBatch(rows) {
   if (!rows.length) return;
-  const valuesSql = rows.map(() => "(?, ?, ?, ?, ?, ?, ?)").join(",");
+  const valuesSql = rows.map(() => "(?, ?, ?, ?, ?, ?, ?, ?)").join(",");
   const params = rows.flatMap((row) => [
     row.KaryawanId,
     row.PeriodeId,
@@ -342,12 +411,33 @@ async function insertHasilAkhirBatch(rows) {
     row.NilaiSkala,
     row.Ranking,
     row.created_by || null,
-    row.status || "Draft"
+    row.status || "Draft",
+    row.catatan || null
   ]);
   await querySpk(
-    `INSERT INTO hasil_akhir(KaryawanId, PeriodeId, NilaiOptimasi, NilaiSkala, Ranking, created_by, status) VALUES ${valuesSql}`,
+    `INSERT INTO hasil_akhir(KaryawanId, PeriodeId, NilaiOptimasi, NilaiSkala, Ranking, created_by, status, catatan) VALUES ${valuesSql}`,
     params
   );
+}
+
+async function saveMooraSnapshot(periodeId, employeeId, snapshotJson) {
+  await querySpk(
+    `UPDATE hasil_akhir
+     SET catatan = ?
+     WHERE PeriodeId = ? AND KaryawanId = ?`,
+    [snapshotJson, periodeId, employeeId]
+  );
+}
+
+async function validateAssessmentCompleteness(periodeId) {
+  const rows = await querySpk(
+    `SELECT p.KaryawanId, COUNT(DISTINCT p.KpiId) AS kpi_count, COUNT(*) AS total_rows
+     FROM penilaians p
+     WHERE p.PeriodeId = ?
+     GROUP BY p.KaryawanId`,
+    [periodeId]
+  );
+  return rows;
 }
 
 async function getHasilAkhirByPeriode(periodeId, options = {}) {
@@ -532,11 +622,33 @@ async function getDistinctKaryawanIdsByPeriode(periodeId) {
   return rows.map((r) => r.KaryawanId);
 }
 
+async function getPenilaianSummaryByPeriode(periodeId) {
+  const rows = await querySpk(
+    `SELECT KaryawanId, COUNT(DISTINCT KpiId) AS kpi_count
+     FROM penilaians
+     WHERE PeriodeId = ?
+     GROUP BY KaryawanId`,
+    [periodeId]
+  );
+  return rows;
+}
+
+async function getDistinctKpiIdsByPeriode(periodeId) {
+  const rows = await querySpk(
+    `SELECT DISTINCT KpiId
+     FROM penilaians
+     WHERE PeriodeId = ?
+     ORDER BY KpiId ASC`,
+    [periodeId]
+  );
+  return rows.map((r) => r.KpiId);
+}
+
 async function getEvaluationChunk(periodeId, employeeIds) {
   if (!employeeIds.length) return [];
   const placeholders = employeeIds.map(() => "?").join(",");
   return querySpk(
-    `SELECT KaryawanId, KpiId, Nilai FROM penilaians
+    `SELECT KaryawanId, KpiId, Realisasi, Achievement, Nilai FROM penilaians
      WHERE PeriodeId = ? AND KaryawanId IN (${placeholders})`,
     [periodeId, ...employeeIds]
   );
@@ -555,13 +667,17 @@ module.exports = {
   createKpi,
   updateKpi,
   deleteKpi,
+  getKpiMetadata,
+  getTargetByKpi,
   getComparisons,
   replaceComparisons,
   updateKpiWeights,
   replaceEvaluations,
   getEvaluationsByPeriode,
+  saveAchievement,
   clearHasilAkhir,
   insertHasilAkhirBatch,
+  saveMooraSnapshot,
   getHasilAkhirByPeriode,
   getEmployeesByIds,
   getDepartments,
@@ -572,6 +688,9 @@ module.exports = {
   getEmployeeByUserId,
   getEmployeeLocationsByIds,
   getDistinctKaryawanIdsByPeriode,
+  getPenilaianSummaryByPeriode,
+  getDistinctKpiIdsByPeriode,
+  validateAssessmentCompleteness,
   getEvaluationChunk,
   getEvaluationsByPeriode,
   getAuditLogs,
