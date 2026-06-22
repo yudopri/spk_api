@@ -442,9 +442,7 @@ async function bulkInsertPenilaian(data) {
   ]);
 
   return await querySpk(
-    `INSERT INTO penilaians
-     (KaryawanId, KpiId, PeriodeId, Realisasi, Achievement, CreatedBy)
-     VALUES ?`,
+    `INSERT INTO penilaians (KaryawanId, KpiId, PeriodeId, Realisasi, Achievement, created_by) VALUES ?`,
     [values]
   );
 }
