@@ -74,7 +74,14 @@ async function getPeriodeById(id) {
   );
   return rows[0] || null;
 }
-
+async function getKpisByPeriode(periodeId) {
+  return await querySpk(
+    `SELECT Id, Target, Tipe
+     FROM kpis
+     WHERE PeriodeId = ? AND IsActive = 1`,
+    [periodeId]
+  );
+}
 async function createPeriode(data) {
   const result = await querySpk(
     `INSERT INTO periodes(NamaPeriode, Tahun, DivisiId, TanggalMulai, TanggalSelesai, Status)
@@ -225,7 +232,7 @@ async function getKpiMetadata(periodeId) {
 
 async function getTargetByKpi(periodeId, kpiId) {
   const rows = await querySpk(
-    `SELECT Target, Tipe
+    `SELECT Id, Target, Tipe
      FROM kpis
      WHERE PeriodeId = ? AND Id = ?
      LIMIT 1`,
@@ -424,7 +431,23 @@ async function saveAchievement(periodeId, karyawanId, kpiId, achievement) {
 async function clearHasilAkhir(periodeId) {
   await querySpk("DELETE FROM hasil_akhir WHERE PeriodeId = ?", [periodeId]);
 }
+async function bulkInsertPenilaian(data) {
+  const values = data.map(d => [
+    d.KaryawanId,
+    d.KpiId,
+    d.PeriodeId,
+    d.Realisasi,
+    d.Achievement,
+    d.CreatedBy
+  ]);
 
+  return await querySpk(
+    `INSERT INTO penilaians
+     (KaryawanId, KpiId, PeriodeId, Realisasi, Achievement, CreatedBy)
+     VALUES ?`,
+    [values]
+  );
+}
 async function insertHasilAkhirBatch(rows) {
   if (!rows.length) return;
   const valuesSql = rows.map(() => "(?, ?, ?, ?, ?, ?, ?, ?)").join(",");
@@ -688,6 +711,7 @@ module.exports = {
   deletePeriode,
   getKpis,
   getKpisByDivision,
+  getKpisByPeriode,
   createKpi,
   updateKpi,
   deleteKpi,
@@ -697,6 +721,7 @@ module.exports = {
   replaceComparisons,
   updateKpiWeights,
   replaceEvaluations,
+  bulkInsertPenilaian,
   getEvaluationsByPeriode,
   saveAchievement,
   clearHasilAkhir,

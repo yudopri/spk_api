@@ -8,6 +8,8 @@ const {
   deletePeriode,
   getKpis,
   getKpisByDivision,
+  getKpisByPeriode,
+  bulkInsertPenilaian,
   createKpi,
   updateKpi,
   deleteKpi,
@@ -724,161 +726,123 @@ async function calculateWeightsHandler(req, res) {
     return res.status(500).json({ success: false, message: error.message });
   }
 }
-
-async function inputPenilaianHandler(req, res) {
-  const evals = req.body;
-
+async function processMooraPenilaian({ evals, periodeId, user }) {
   if (!Array.isArray(evals) || evals.length === 0) {
-    return res.status(400).json({ success: false, message: "Data tidak boleh kosong" });
+    throw new Error("Data tidak boleh kosong");
   }
 
-  const periodeId = Number(evals[0].PeriodeId);
+  // 1. Load KPI sekali saja (ANTI N+1)
+  const kpiRows = await getKpisByPeriode(periodeId);
 
-  // 1. Check periode (1x query)
-  const periode = await getPeriodeById(periodeId);
-
-  if (String(periode?.Status || "").toLowerCase() === "locked") {
-    return res.status(403).json({ success: false, message: "Periode terkunci, penilaian tidak dapat diubah" });
+  if (!kpiRows.length) {
+    throw new Error("KPI periode tidak ditemukan");
   }
 
-  if (!canAccessPeriodeForUser(req.user, periode)) {
-    return res.status(403).json({ success: false, message: "Tidak boleh input penilaian lintas divisi" });
-  }
+  const kpiMap = new Map(
+    kpiRows.map(k => [Number(k.Id), k])
+  );
 
-  // 2. KPI aktif (1x query)
-  const activeKpisMeta = await getKpis(periodeId);
-  const activeKpis = activeKpisMeta.rows;
+  const activeKpiIds = new Set(kpiRows.map(k => Number(k.Id)));
 
-  const activeKpiIds = activeKpis.map(k => Number(k.Id));
-
-  // 3. duplicate check (fast)
+  // 2. Validasi duplikasi input
   const pairSet = new Set();
   for (const e of evals) {
     const key = `${e.KaryawanId}:${e.KpiId}`;
     if (pairSet.has(key)) {
-      return res.status(400).json({
-        success: false,
-        message: "Terdapat KPI duplikat dalam satu penilaian"
-      });
+      throw new Error("Terdapat KPI duplikat dalam satu penilaian");
     }
     pairSet.add(key);
   }
 
-  // 4. KPI completeness check
-  const payloadKpiIds = [...new Set(evals.map(e => Number(e.KpiId)))];
-  const missingKpis = activeKpiIds.filter(id => !payloadKpiIds.includes(id));
+  // 3. Validasi KPI lengkap
+  const payloadKpiIds = new Set(evals.map(e => Number(e.KpiId)));
+  const missing = [...activeKpiIds].filter(id => !payloadKpiIds.has(id));
 
-  if (missingKpis.length > 0) {
-    return res.status(400).json({
-      success: false,
-      message: "Matriks penilaian belum lengkap",
-      missing_kpi_ids: missingKpis
+  if (missing.length) {
+    throw Object.assign(new Error("Matriks KPI belum lengkap"), {
+      missing_kpi_ids: missing
     });
   }
 
-  // 5. employee completeness (1x query)
-  const summary = await getPenilaianSummaryByPeriode(periodeId);
-
-  const incompleteEmployees = summary
-    .filter(r => Number(r.kpi_count) !== activeKpiIds.length)
-    .map(r => Number(r.KaryawanId));
-
-  if (incompleteEmployees.length > 0) {
-    return res.status(400).json({
-      success: false,
-      message: "Ada karyawan belum lengkap",
-      missing_employee_ids: incompleteEmployees
-    });
-  }
-
-  // 6. Kadiv restriction (unchanged logic)
-  if (req.user?.role === "Kadiv") {
-    const uniqueEmployeeIds = [...new Set(evals.map(i => Number(i.KaryawanId)))];
-    const employees = await getEmployeeLocationsByIds(uniqueEmployeeIds);
-
-    const blocked = employees
-      .filter(e => String(e.role || "").toLowerCase() === "manager")
-      .map(e => Number(e.id));
-
-    if (blocked.length > 0) {
-      return res.status(403).json({
-        success: false,
-        message: "Kadiv tidak boleh menilai Manager",
-        blocked_karyawan_ids: blocked
-      });
-    }
-  }
-
-  // 7. 🔥 FIX TERBESAR: batch KPI lookup (NO LOOP QUERY)
-  const kpiIds = [...new Set(evals.map(e => Number(e.KpiId)))];
-
-  const kpiRows = await Promise.all(
-    kpiIds.map(id => getTargetByKpi(periodeId, id))
-  );
-
-  const kpiMap = new Map();
-  for (const k of kpiRows) {
-    if (k) kpiMap.set(Number(k.KpiId || k.Id), k);
-  }
-
-  // 8. processing (FAST no DB call inside loop)
+  // 4. Transform data (FAST in-memory processing)
   const normalized = [];
 
   for (const item of evals) {
-    const kpiId = Number(item.KpiId);
-    const kpiMeta = kpiMap.get(kpiId);
+    const kpi = kpiMap.get(Number(item.KpiId));
 
-    if (!kpiMeta) {
-      return res.status(400).json({
-        success: false,
-        message: `KPI ${kpiId} tidak ditemukan pada periode ini`
-      });
+    if (!kpi) {
+      throw new Error(`KPI ${item.KpiId} tidak ditemukan`);
     }
 
-    const realisasi = Number(item.Realisasi ?? item.Nilai);
+    const realisasi = Number(item.Realisasi);
 
-    if (!Number.isFinite(realisasi) || realisasi < 0) {
-      return res.status(400).json({ success: false, message: "Realisasi tidak valid" });
+    if (!Number.isFinite(realisasi)) {
+      throw new Error("Realisasi tidak valid");
     }
 
-    const achievementResult = calculateAchievement({
-      target: kpiMeta.Target,
-      tipe: kpiMeta.Tipe,
-      realisasi
+    const achievement = calculateAchievement({
+      target: Number(kpi.Target),
+      realisasi,
+      tipe: kpi.Tipe
     });
 
-    if (!achievementResult.valid) {
-      return res.status(400).json({ success: false, message: achievementResult.message });
+    if (!achievement.valid) {
+      throw new Error(achievement.message);
     }
 
     normalized.push({
       KaryawanId: Number(item.KaryawanId),
-      KpiId: kpiId,
-      PeriodeId: periodeId,
+      KpiId: Number(item.KpiId),
+      PeriodeId: Number(periodeId),
       Realisasi: realisasi,
-      Achievement: achievementResult.achievement,
-      created_by: Number(req.user?.sub || 0),
-      Nilai: realisasi
+      Achievement: achievement.achievement,
+      CreatedBy: Number(user?.sub || 0)
     });
   }
 
-  // lanjut proses DB
-  await replaceEvaluations(periodeId, normalized);
+  return normalized;
+}
+async function inputPenilaianHandler(req, res) {
+  try {
+    const periodeId = Number(req.body?.[0]?.PeriodeId);
 
-  for (const row of normalized) {
-    await saveAchievement(periodeId, row.KaryawanId, row.KpiId, row.Achievement);
+    const periode = await getPeriodeById(periodeId);
+
+    if (!periode) {
+      return res.status(404).json({ message: "Periode tidak ditemukan" });
+    }
+
+    if (String(periode.Status).toLowerCase() === "locked") {
+      return res.status(403).json({ message: "Periode terkunci" });
+    }
+
+    if (!canAccessPeriodeForUser(req.user, periode)) {
+      return res.status(403).json({ message: "Akses ditolak" });
+    }
+
+    // 🔥 CORE ENGINE
+    const normalized = await processMooraPenilaian({
+      evals: req.body,
+      periodeId,
+      user: req.user
+    });
+
+    // 🔥 BULK INSERT (IMPORTANT)
+    await bulkInsertPenilaian(normalized);
+
+    return res.json({
+      success: true,
+      message: "Penilaian berhasil disimpan",
+      total: normalized.length
+    });
+
+  } catch (err) {
+    return res.status(400).json({
+      success: false,
+      message: err.message,
+      extra: err.missing_kpi_ids || null
+    });
   }
-
-  await logActivity(req, "CREATE/UPDATE", "MooraPenilaian", {
-    PeriodeId: periodeId,
-    Count: normalized.length
-  });
-
-  return res.json({
-    success: true,
-    message: "Data penilaian berhasil disimpan",
-    mapped_field: "Nilai/Realisasi -> Achievement"
-  });
 }
 
 async function persistMooraResultSnapshots(periodeId, kpis, rankedResults, detailMap) {
