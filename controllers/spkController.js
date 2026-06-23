@@ -1194,7 +1194,7 @@ async function getAuditLogsHandler(req, res) {
         Details: row.Details,
         IpAddress: row.IpAddress,
         UserAgent: row.UserAgent,
-        CreatedAt: toIso(row.Timestamp)
+        CreatedAt: toIso(row.CreatedAt)
       })),
       meta: formatMeta(options, result.total)
     });

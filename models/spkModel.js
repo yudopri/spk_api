@@ -646,7 +646,7 @@ async function getEmployeeLocationsByIds(employeeIds) {
 }
 
 async function getAuditLogs(options = {}) {
-  const baseSql = `SELECT Id, UserId, Username, Action, EntityName, Details, IpAddress, UserAgent, Timestamp
+  const baseSql = `SELECT Id, UserId, Username, Action, EntityName, Details, IpAddress, UserAgent, CreatedAt
      FROM audit_logs`;
   const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, [], options, ["Username", "Action", "EntityName"]);
 
