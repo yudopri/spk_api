@@ -577,15 +577,16 @@ async function getEmployees({ deptId, lokasiKerja, ...options }) {
              FROM employees e
              LEFT JOIN users u ON u.email = e.email
              LEFT JOIN departemens d ON d.id = e.departemen_id
-             LEFT JOIN work_locations wl ON wl.name = e.lokasikerja
-             WHERE e.status_kerja = 'aktif'`;
+             LEFT JOIN work_locations wl ON wl.name = e.lokasikerja`;
   const baseParams = [];
+  let hasWhere = false;
   if (deptId) {
-    baseSql += " AND e.departemen_id = ?";
+    baseSql += " WHERE e.departemen_id = ?";
     baseParams.push(deptId);
+    hasWhere = true;
   }
   if (lokasiKerja) {
-    baseSql += " AND e.lokasikerja = ?";
+    baseSql += hasWhere ? " AND e.lokasikerja = ?" : " WHERE e.lokasikerja = ?";
     baseParams.push(lokasiKerja);
   }
 
