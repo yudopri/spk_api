@@ -929,6 +929,13 @@ async function calculateMooraHandler(req, res) {
       });
     }
 
+    // Build group weight map from kpi_groups
+    const groupRows = await getKpiGroups(periodeId);
+    const groupWeightMap = {};
+    groupRows.rows.forEach((g) => {
+      groupWeightMap[g.id] = Number(g.bobot_grup ?? 1);
+    });
+
     const denominatorRows = await querySpk(
       `SELECT KpiId, SQRT(SUM(Achievement * Achievement)) AS denominator
      FROM penilaians
@@ -942,7 +949,7 @@ async function calculateMooraHandler(req, res) {
       denominatorMap[row.KpiId] = Number(row.denominator) || 1;
     });
 
-    const coeffMap = buildMooraCoeffMap(kpis, denominatorMap);
+    const coeffMap = buildMooraCoeffMap(kpis, denominatorMap, groupWeightMap);
     const yiMap = {};
     const detailMap = {};
 
@@ -979,6 +986,9 @@ async function calculateMooraHandler(req, res) {
           jenis: String(kpi.Tipe || "").toLowerCase(),
           target: Number(kpi.Target || 0),
           bobot_ahp: Number(kpi.BobotAhp || 0),
+          bobot_grup: Number(kpi.bobot_grup || 1),
+          group_id: kpi.group_id || null,
+          group_name: kpi.nama_grup || null,
           satuan: kpi.simbol || kpi.nama_satuan || null
         })),
         hasil_moora: detailMap[row.employeeId] || [],
@@ -1216,7 +1226,11 @@ async function getIndividualReportHandler(req, res) {
       return {
         Kriteria: k.NamaKpi,
         Nilai: ev ? ev.Realisasi : 0,
-        Satuan: k.simbol || ""
+        Satuan: k.simbol || "",
+        group_id: k.group_id || null,
+        nama_grup: k.nama_grup || null,
+        bobot_ahp: Number(k.BobotAhp || 0),
+        bobot_grup: Number(k.bobot_grup || 1)
       };
     });
 

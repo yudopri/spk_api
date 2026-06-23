@@ -153,13 +153,17 @@ function calculateAHP(kpis, comparisons) {
   };
 }
 
-function buildMooraCoeffMap(kpis, denominatorMap) {
+function buildMooraCoeffMap(kpis, denominatorMap, groupWeightMap = {}) {
   const coeff = {};
   for (const kpi of kpis) {
     const denominator = denominatorMap[kpi.Id] || 1;
-    const weight = Number(kpi.BobotAhp || 0);
+    const kpiWeight = Number(kpi.BobotAhp || 0);
+    const groupWeight = Number(groupWeightMap[kpi.group_id] || 1);
+    const combinedWeight = kpiWeight * groupWeight;
     coeff[kpi.Id] = {
-      weight,
+      weight: combinedWeight,
+      kpiWeight,
+      groupWeight,
       denominator: denominator || 1,
       jenis: String(kpi.Tipe || "benefit").toLowerCase() === "benefit" ? "benefit" : "cost"
     };
@@ -182,6 +186,9 @@ function scoreMooraChunk(evaluations, coeffMap) {
     if (!detailByEmployee[ev.KaryawanId]) detailByEmployee[ev.KaryawanId] = [];
     detailByEmployee[ev.KaryawanId].push({
       KpiId: ev.KpiId,
+      group_id: ev.group_id || null,
+      nama_grup: ev.nama_grup || null,
+      bobot_grup: Number(ev.bobot_grup || 1),
       NilaiAsli: baseValue,
       NilaiNormalisasi: normalized,
       NilaiTerbobot: weighted,

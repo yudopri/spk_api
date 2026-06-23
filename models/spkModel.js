@@ -694,8 +694,12 @@ async function getEvaluationChunk(periodeId, employeeIds) {
   if (!employeeIds.length) return [];
   const placeholders = employeeIds.map(() => "?").join(",");
   return querySpk(
-    `SELECT KaryawanId, KpiId, Realisasi, Achievement, Nilai FROM penilaians
-     WHERE PeriodeId = ? AND KaryawanId IN (${placeholders})`,
+    `SELECT p.KaryawanId, p.KpiId, p.Realisasi, p.Achievement, p.Nilai,
+            k.group_id, kg.nama_grup, kg.bobot_grup
+     FROM penilaians p
+     LEFT JOIN kpis k ON k.Id = p.KpiId
+     LEFT JOIN kpi_groups kg ON kg.id = k.group_id
+     WHERE p.PeriodeId = ? AND p.KaryawanId IN (${placeholders})`,
     [periodeId, ...employeeIds]
   );
 }
