@@ -432,6 +432,19 @@ async function clearHasilAkhir(periodeId) {
   await querySpk("DELETE FROM hasil_akhir WHERE PeriodeId = ?", [periodeId]);
 }
 async function bulkInsertPenilaian(data) {
+  if (!data.length) return;
+
+  const periodeId = Number(data[0].PeriodeId);
+  const employeeIds = [...new Set(data.map((x) => Number(x.KaryawanId)))];
+
+  if (employeeIds.length > 0) {
+    const placeholders = employeeIds.map(() => "?").join(",");
+    await querySpk(
+      `DELETE FROM penilaians WHERE PeriodeId = ? AND KaryawanId IN (${placeholders})`,
+      [periodeId, ...employeeIds]
+    );
+  }
+
   const values = data.map(d => [
     d.KaryawanId,
     d.KpiId,

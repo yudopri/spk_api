@@ -260,6 +260,22 @@ async function createPeriodeHandler(req, res) {
 
   if (!(await assertPeriodNotLocked(res, data.PeriodeId))) return;
 
+  if (data.DivisiId !== null && data.DivisiId !== undefined && data.DivisiId !== "") {
+    const activeStatusCheck = await querySpk(
+      `SELECT Id FROM periodes
+       WHERE DivisiId = ?
+       AND Status NOT IN ('Draft')
+       LIMIT 1`,
+      [Number(data.DivisiId)]
+    );
+    if (activeStatusCheck.length > 0) {
+      return res.status(409).json({
+        success: false,
+        message: "Divisi ini masih memiliki periode aktif dan tidak dapat membuat periode baru."
+      });
+    }
+  }
+
   if (req.user?.role === "Kadiv") {
     data.DivisiId = Number(req.user?.dept_id || 0) || data.DivisiId;
   }
