@@ -708,12 +708,20 @@ async function calculateWeightsHandler(req, res) {
       return res.status(403).json({ success: false, message: "Tidak boleh menghitung bobot lintas divisi" });
     }
 
-    const kpisMeta = await getKpis(periodeId);
+    const groupId = req.body.group_id ? Number(req.body.group_id) : null;
+    const kpisMeta = await getKpis(periodeId, {}, groupId);
     const kpis = kpisMeta.rows;
-    const comps = await getComparisons(periodeId);
 
     if (kpis.length === 0) {
       return res.status(400).json({ success: false, message: "KPI tidak ditemukan" });
+    }
+
+    const kpiIds = new Set(kpis.map((k) => Number(k.Id)));
+    const allComparisons = await getComparisons(periodeId);
+    const comps = allComparisons.filter((c) => kpiIds.has(Number(c.KpiAId)) && kpiIds.has(Number(c.KpiBId)));
+
+    if (comps.length === 0 && kpis.length > 1) {
+      return res.status(400).json({ success: false, message: "Perbandingan AHP belum lengkap untuk grup ini" });
     }
 
     const ahp = calculateAHP(kpis, comps);
@@ -733,6 +741,7 @@ async function calculateWeightsHandler(req, res) {
     await updateKpiWeights(periodeId, weightByKpiId);
     await logActivity(req, "CALCULATE", "AhpWeights", {
       PeriodeId: periodeId,
+      GroupId: groupId,
       Weights: ahp.weights,
       Consistency: ahp.consistency
     });
@@ -1474,26 +1483,44 @@ async function getSummaryReportHandler(req, res) {
 
 async function updateHasilReviewHandler(req, res) {
   const { id } = req.params;
-  const { status, prestasi, indisipliner, saran } = req.body;
+  const { status, Catatan, prestasi, indisipliner, saran } = req.body;
 
   if (status && !["Draft", "Pending", "Reviewed", "Processed", "Locked"].includes(status)) {
     return res.status(400).json({ success: false, message: "Status tidak valid." });
   }
 
-  // Format catatan as JSON string
-  const catatanObj = {
-    p: (prestasi || "").trim(),
-    i: (indisipliner || "").trim(),
-    s: (saran || "").trim()
-  };
+  let catatanObj;
+  if (Catatan && typeof Catatan === "object") {
+    catatanObj = {
+      p: String(Catatan.p || Catatan.prestasi || "").trim(),
+      i: String(Catatan.i || Catatan.indisipliner || "").trim(),
+      s: String(Catatan.s || Catatan.saran || "").trim()
+    };
+  } else {
+    catatanObj = {
+      p: (prestasi || "").trim(),
+      i: (indisipliner || "").trim(),
+      s: (saran || "").trim()
+    };
+  }
   const catatanJson = JSON.stringify(catatanObj);
 
   const resultRows = await querySpk("SELECT PeriodeId FROM hasil_akhir WHERE Id = ? LIMIT 1", [id]);
+  if (!resultRows.length) {
+    return res.status(404).json({ success: false, message: "Data hasil tidak ditemukan" });
+  }
   if (!(await assertPeriodNotLocked(res, resultRows[0]?.PeriodeId))) return;
 
-  await updateHasilAkhirStatus(id, { status, catatan: catatanJson });
+  await querySpk(
+    `UPDATE hasil_akhir 
+     SET catatan = ?,
+         status = COALESCE(?, status)
+     WHERE Id = ?`,
+    [catatanJson, status || null, id]
+  );
+
   await logActivity(req, "REVIEW", "MooraResult", { Id: id, Status: status, Catatan: catatanObj });
-  
+
   return res.json({ success: true, message: "Review berhasil disimpan" });
 }
 

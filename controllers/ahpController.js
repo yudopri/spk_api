@@ -94,22 +94,27 @@ async function getRankingByPeriod(req, res) {
       return res.status(400).json({ success: false, message: "periode_id tidak valid" });
     }
 
-    const kpisMeta = await getKpis(periodeId);
+    const groupId = req.query.group_id ? Number(req.query.group_id) : null;
+
+    const kpisMeta = await getKpis(periodeId, {}, groupId);
     const kpis = kpisMeta.rows;
-    const rows = await getEvaluationsByPeriode(periodeId);
+    const rows = await getEvaluationsByPeriode(periodeId, groupId);
     const employeeIds = [...new Set(rows.map((row) => Number(row.KaryawanId)))];
 
     if (kpis.length === 0 || employeeIds.length === 0) {
       return res.status(404).json({ success: false, message: "Data KPI atau penilaian tidak ditemukan" });
     }
 
-    const denominatorRows = await querySpk(
-      `SELECT KpiId, SQRT(SUM(Achievement * Achievement)) AS denominator
-       FROM penilaians
-       WHERE PeriodeId = ?
-       GROUP BY KpiId`,
-      [periodeId]
-    );
+    const denominatorQuery = `
+      SELECT p.KpiId, SQRT(SUM(p.Achievement * p.Achievement)) AS denominator
+      FROM penilaians p
+      INNER JOIN kpis k ON k.Id = p.KpiId
+      WHERE p.PeriodeId = ?
+      ${groupId ? "AND k.group_id = ?" : ""}
+      GROUP BY p.KpiId
+    `;
+    const denominatorParams = groupId ? [periodeId, groupId] : [periodeId];
+    const denominatorRows = await querySpk(denominatorQuery, denominatorParams);
 
     const denominatorMap = {};
     denominatorRows.forEach((row) => {

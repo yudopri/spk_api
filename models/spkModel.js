@@ -195,7 +195,7 @@ async function updateGroupWeights(periodeId, weightByGroupId) {
   await Promise.all(promises);
 }
 
-async function getKpis(periodeId, options = {}) {
+async function getKpis(periodeId, options = {}, groupId = null) {
   let baseSql = `
     SELECT k.Id, k.NamaKpi, k.Tipe, k.Target, k.IsActive, k.BobotAhp, k.PeriodeId, k.attributeId, k.group_id,
            ms.nama AS nama_satuan, ms.simbol AS simbol,
@@ -205,9 +205,19 @@ async function getKpis(periodeId, options = {}) {
     LEFT JOIN kpi_groups kg ON kg.id = k.group_id
   `;
   const baseParams = [];
+  const conditions = [];
+  
   if (periodeId) {
-    baseSql += " WHERE k.PeriodeId = ?";
+    conditions.push("k.PeriodeId = ?");
     baseParams.push(periodeId);
+  }
+  if (groupId) {
+    conditions.push("k.group_id = ?");
+    baseParams.push(groupId);
+  }
+  
+  if (conditions.length > 0) {
+    baseSql += " WHERE " + conditions.join(" AND ");
   }
 
   const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, baseParams, options, ["k.NamaKpi", "k.Tipe"]);
@@ -403,14 +413,25 @@ async function replaceEvaluations(periodeId, evals) {
   );
 }
 
-async function getEvaluationsByPeriode(periodeId) {
+async function getEvaluationsByPeriode(periodeId, groupId = null) {
   try {
-    const rows = await querySpk(
-      `SELECT Id, KaryawanId, KpiId, PeriodeId, Realisasi, Achievement, Nilai, created_by
-       FROM penilaians
-       WHERE PeriodeId = ?`,
-      [periodeId]
-    );
+    let baseSql = `
+      SELECT p.Id, p.KaryawanId, p.KpiId, p.PeriodeId, p.Realisasi, p.Achievement, p.Nilai, p.created_by
+      FROM penilaians p
+      INNER JOIN kpis k ON k.Id = p.KpiId
+    `;
+    const baseParams = [];
+    const conditions = ["p.PeriodeId = ?"];
+    baseParams.push(periodeId);
+    
+    if (groupId) {
+      conditions.push("k.group_id = ?");
+      baseParams.push(groupId);
+    }
+    
+    baseSql += " WHERE " + conditions.join(" AND ");
+
+    const rows = await querySpk(baseSql, baseParams);
 
     return Array.isArray(rows) ? rows : [];
   } catch (err) {
