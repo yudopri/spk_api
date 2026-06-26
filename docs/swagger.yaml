@@ -693,6 +693,14 @@ paths:
           in: path
           required: true
           schema: { type: integer }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                group_id: { type: integer, nullable: true }
       responses:
         '200':
           description: Weights calculated
@@ -830,6 +838,49 @@ paths:
           description: Review saved success
         '400':
           description: Invalid status or pending validation
+
+  /api/ranking/{periode_id}:
+    get:
+      summary: Get MOORA ranking by period (with optional group filter)
+      tags: [SPK Calculation]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: periode_id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: group_id
+          in: query
+          schema: { type: integer, nullable: true }
+          description: Optional KPI group ID to filter ranking by group
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/searchParam'
+        - $ref: '#/components/parameters/filterParam'
+        - $ref: '#/components/parameters/sortParam'
+      responses:
+        '200':
+          description: Ranked data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  periode_id: { type: integer }
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        employeeId: { type: integer }
+                        employeeName: { type: string, nullable: true }
+                        yi: { type: number }
+                        rank: { type: integer }
+                        detail:
+                          type: array
+                          items:
+                            type: object
 
   /api/spk/report/summary/{periode_id}:
     get:
