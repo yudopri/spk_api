@@ -13,7 +13,18 @@ const {
   getOrCreateRoleByName,
   setRolePermissions,
   getRolePermissionNames,
-  getAllUsers
+  getAllUsers,
+  // New CRUD imports
+  getAllRoles,
+  getRoleById,
+  createRole,
+  updateRole,
+  getPermissionById,
+  updatePermission,
+  deletePermission,
+  addPermissionToRole,
+  removePermissionFromRole,
+  bulkSetRolePermissions
 } = require("../models/authModel");
 
 function signAccessToken(payload) {
@@ -208,6 +219,209 @@ async function getUsers(req, res) {
   }
 }
 
+// ─── CRUD Roles ──────────────────────────────────────────────
+
+async function getRoles(req, res) {
+  try {
+    const options = getQueryOptions(req);
+    const { rows, total } = await getAllRoles(options);
+    // Enrich with permission count
+    const enriched = await Promise.all(
+      rows.map(async (role) => {
+        const permissions = await getRolePermissions(role.id);
+        return {
+          id: role.id,
+          role_name: role.role_name,
+          permission_count: permissions.length,
+          permissions
+        };
+      })
+    );
+    return res.json({ success: true, data: enriched, meta: formatMeta(options, total) });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+  }
+}
+
+async function getRoleDetail(req, res) {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ success: false, message: "ID tidak valid" });
+
+    const role = await getRoleById(id);
+    if (!role) return res.status(404).json({ success: false, message: "Role tidak ditemukan" });
+
+    const permissions = await getRolePermissions(role.id);
+    return res.json({
+      success: true,
+      data: { id: role.id, role_name: role.role_name, permissions }
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+  }
+}
+
+async function createRoleHandler(req, res) {
+  try {
+    const { role_name } = req.body || {};
+    if (!role_name || !String(role_name).trim()) {
+      return res.status(400).json({ success: false, message: "role_name wajib diisi" });
+    }
+
+    const result = await createRole(String(role_name).trim());
+    if (result.exists) {
+      return res.status(409).json({ success: false, message: `Role '${role_name}' sudah ada`, id: result.id });
+    }
+
+    return res.status(201).json({ success: true, id: result.id, role_name: result.role_name });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+  }
+}
+
+async function updateRoleHandler(req, res) {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ success: false, message: "ID tidak valid" });
+
+    const { role_name } = req.body || {};
+    if (!role_name || !String(role_name).trim()) {
+      return res.status(400).json({ success: false, message: "role_name wajib diisi" });
+    }
+
+    const result = await updateRole(id, String(role_name).trim());
+    if (result.notFound) return res.status(404).json({ success: false, message: "Role tidak ditemukan" });
+    if (result.conflict) return res.status(409).json({ success: false, message: `Role '${role_name}' sudah digunakan role lain` });
+
+    return res.json({ success: true, message: "Role berhasil diperbarui" });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+  }
+}
+
+// ─── CRUD Permissions ────────────────────────────────────────
+
+async function getPermissionDetail(req, res) {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ success: false, message: "ID tidak valid" });
+
+    const perm = await getPermissionById(id);
+    if (!perm) return res.status(404).json({ success: false, message: "Permission tidak ditemukan" });
+
+    return res.json({ success: true, data: perm });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+  }
+}
+
+async function updatePermissionHandler(req, res) {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ success: false, message: "ID tidak valid" });
+
+    const { permission_name, path } = req.body || {};
+    if (!permission_name || !String(permission_name).trim()) {
+      return res.status(400).json({ success: false, message: "permission_name wajib diisi" });
+    }
+
+    const result = await updatePermission(id, String(permission_name).trim(), path);
+    if (result.notFound) return res.status(404).json({ success: false, message: "Permission tidak ditemukan" });
+    if (result.conflict) return res.status(409).json({ success: false, message: `Permission '${permission_name}' sudah ada` });
+
+    return res.json({ success: true, message: "Permission berhasil diperbarui" });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+  }
+}
+
+async function deletePermissionHandler(req, res) {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ success: false, message: "ID tidak valid" });
+
+    const result = await deletePermission(id);
+    if (result.notFound) return res.status(404).json({ success: false, message: "Permission tidak ditemukan" });
+    if (result.inUse) {
+      return res.status(409).json({
+        success: false,
+        message: `Permission masih digunakan oleh ${result.roleCount} role. Hapus mapping terlebih dahulu.`
+      });
+    }
+
+    return res.json({ success: true, message: "Permission berhasil dihapus" });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+  }
+}
+
+// ─── Single Permission Assignment ────────────────────────────
+
+async function addPermissionToRoleHandler(req, res) {
+  try {
+    const roleId = Number(req.params.id);
+    const permissionId = Number(req.params.permission_id);
+    if (!roleId || !permissionId) return res.status(400).json({ success: false, message: "ID tidak valid" });
+
+    const role = await getRoleById(roleId);
+    if (!role) return res.status(404).json({ success: false, message: "Role tidak ditemukan" });
+
+    const perm = await getPermissionById(permissionId);
+    if (!perm) return res.status(404).json({ success: false, message: "Permission tidak ditemukan" });
+
+    const result = await addPermissionToRole(roleId, permissionId);
+    if (result.alreadyAssigned) {
+      return res.status(409).json({ success: false, message: "Permission sudah ditambahkan ke role ini" });
+    }
+
+    return res.json({ success: true, message: `Permission '${perm.permission_name}' ditambahkan ke role '${role.role_name}'` });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+  }
+}
+
+async function removePermissionFromRoleHandler(req, res) {
+  try {
+    const roleId = Number(req.params.id);
+    const permissionId = Number(req.params.permission_id);
+    if (!roleId || !permissionId) return res.status(400).json({ success: false, message: "ID tidak valid" });
+
+    const result = await removePermissionFromRole(roleId, permissionId);
+    if (!result.success) {
+      return res.status(404).json({ success: false, message: "Mapping tidak ditemukan" });
+    }
+
+    return res.json({ success: true, message: "Permission berhasil dihapus dari role" });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+  }
+}
+
+async function bulkSetRolePermissionsHandler(req, res) {
+  try {
+    const roleId = Number(req.params.id);
+    if (!roleId) return res.status(400).json({ success: false, message: "ID tidak valid" });
+
+    const role = await getRoleById(roleId);
+    if (!role) return res.status(404).json({ success: false, message: "Role tidak ditemukan" });
+
+    const { permission_ids } = req.body || {};
+    if (!Array.isArray(permission_ids)) {
+      return res.status(400).json({ success: false, message: "permission_ids harus berupa array" });
+    }
+
+    const result = await bulkSetRolePermissions(roleId, permission_ids);
+    return res.json({
+      success: true,
+      message: `Permission berhasil diatur untuk role '${role.role_name}'`,
+      assigned: result.assigned,
+      invalid_ids: result.invalidIds || []
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+  }
+}
+
 module.exports = {
   login,
   refresh,
@@ -218,5 +432,16 @@ module.exports = {
   assignPermissionsToMitraRole,
   getRolesMitra,
   seedPermissions,
-  getUsers
+  getUsers,
+  // New CRUD exports
+  getRoles,
+  getRoleDetail,
+  createRoleHandler,
+  updateRoleHandler,
+  getPermissionDetail,
+  updatePermissionHandler,
+  deletePermissionHandler,
+  addPermissionToRoleHandler,
+  removePermissionFromRoleHandler,
+  bulkSetRolePermissionsHandler
 };

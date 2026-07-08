@@ -104,6 +104,35 @@ components:
           nullable: true
           description: Snapshot JSON perhitungan MOORA
 
+    Role:
+      type: object
+      description: Role with permission summary
+      properties:
+        id: { type: integer }
+        role_name: { type: string }
+        permission_count: { type: integer }
+        permissions:
+          type: array
+          items: { type: string }
+          description: List of permission_name strings
+
+    RoleDetail:
+      type: object
+      description: Role with full permission details
+      properties:
+        id: { type: integer }
+        role_name: { type: string }
+        permissions:
+          type: array
+          items: { type: string }
+
+    Permission:
+      type: object
+      properties:
+        id: { type: integer }
+        permission_name: { type: string }
+        path: { type: string }
+
 paths:
   /api/auth/login:
     post:
@@ -247,7 +276,7 @@ paths:
 
   /api/auth/mitra-roles/{role_name}/permissions:
     get:
-      summary: Get permissions by role
+      summary: Get permissions by role (legacy)
       tags: [Access Control]
       security: [{ bearerAuth: [] }]
       parameters:
@@ -259,7 +288,7 @@ paths:
         '200':
           description: Permission names
     post:
-      summary: Assign permission IDs to role
+      summary: Assign permission IDs to role (legacy)
       tags: [Access Control]
       security: [{ bearerAuth: [] }]
       parameters:
@@ -276,6 +305,292 @@ paths:
       responses:
         '200':
           description: Mapping updated
+
+  # ═══════════════════════════════════════════════════════════════
+  # ROLES CRUD
+  # ═══════════════════════════════════════════════════════════════
+
+  /api/auth/roles:
+    get:
+      summary: Get all roles with permission details
+      tags: [Roles]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/searchParam'
+        - $ref: '#/components/parameters/sortParam'
+      responses:
+        '200':
+          description: Paginated roles list with permissions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Role'
+                  meta: { $ref: '#/components/schemas/Meta' }
+    post:
+      summary: Create a new role
+      tags: [Roles]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role_name: { type: string, example: "Adm HRD" }
+              required: [role_name]
+      responses:
+        '201':
+          description: Role created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  id: { type: integer }
+                  role_name: { type: string }
+        '409':
+          description: Role already exists
+
+  /api/auth/roles/{id}:
+    get:
+      summary: Get role detail with permissions
+      tags: [Roles]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Role detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    $ref: '#/components/schemas/RoleDetail'
+        '404':
+          description: Role not found
+    put:
+      summary: Update role name
+      tags: [Roles]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role_name: { type: string }
+              required: [role_name]
+      responses:
+        '200':
+          description: Role updated
+        '404':
+          description: Role not found
+        '409':
+          description: Role name already in use
+
+  /api/auth/roles/{id}/permissions:
+    get:
+      summary: Get all permissions assigned to a role
+      tags: [Role Permissions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Role ID
+          schema: { type: integer }
+      responses:
+        '200':
+          description: List of permission IDs assigned to this role
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        permission_name: { type: string }
+                        path: { type: string }
+    post:
+      summary: Bulk set permissions for a role (replace all)
+      tags: [Role Permissions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Role ID
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                permission_ids:
+                  type: array
+                  items: { type: integer }
+                  example: [1, 2, 3, 5]
+              required: [permission_ids]
+      responses:
+        '200':
+          description: Permissions updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  assigned: { type: integer }
+                  invalid_ids:
+                    type: array
+                    items: { type: integer }
+                    description: IDs that were not found in permissions table
+        '404':
+          description: Role not found
+
+  /api/auth/roles/{id}/permissions/{permission_id}:
+    post:
+      summary: Add a single permission to a role
+      tags: [Role Permissions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Role ID
+          schema: { type: integer }
+        - name: permission_id
+          in: path
+          required: true
+          description: Permission ID
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Permission added to role
+        '404':
+          description: Role or Permission not found
+        '409':
+          description: Permission already assigned to this role
+    delete:
+      summary: Remove a single permission from a role
+      tags: [Role Permissions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Role ID
+          schema: { type: integer }
+        - name: permission_id
+          in: path
+          required: true
+          description: Permission ID
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Permission removed from role
+        '404':
+          description: Mapping not found
+
+  # ═══════════════════════════════════════════════════════════════
+  # PERMISSIONS CRUD
+  # ═══════════════════════════════════════════════════════════════
+
+  /api/auth/permissions/{id}:
+    get:
+      summary: Get permission detail by ID
+      tags: [Permissions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Permission detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    $ref: '#/components/schemas/Permission'
+        '404':
+          description: Permission not found
+    put:
+      summary: Update permission name and path
+      tags: [Permissions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                permission_name: { type: string }
+                path: { type: string }
+              required: [permission_name]
+      responses:
+        '200':
+          description: Permission updated
+        '404':
+          description: Permission not found
+        '409':
+          description: Permission name already exists
+    delete:
+      summary: Delete a permission (only if no roles assigned)
+      tags: [Permissions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Permission deleted
+        '404':
+          description: Permission not found
+        '409':
+          description: Permission is still assigned to roles
 
   /api/spk/periode:
     get:
