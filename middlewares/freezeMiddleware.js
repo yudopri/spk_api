@@ -48,7 +48,8 @@ async function checkPeriodStatus(req, res, next) {
 
     next();
   } catch (error) {
-    return res.status(500).json({ success: false, message: "Middleware error: " + error.message });
+    console.error("[FREEZE MIDDLEWARE ERROR]", error);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 

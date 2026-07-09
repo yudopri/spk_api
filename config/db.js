@@ -41,6 +41,14 @@ async function querySpk(sql, params = []) {
 }
 
 /**
+ * Validasi nama kolom agar hanya berisi alphanumeric dan underscore.
+ * Mencegah SQL injection dari input user.
+ */
+function sanitizeColumnName(name) {
+  return /^[A-Za-z0-9_.]+$/.test(name) ? name : null;
+}
+
+/**
  * Membantu menyusun query dengan pagination, search, filter, dan sort.
  */
 function applyQueryMeta(baseSql, baseParams, options = {}, searchColumns = []) {
@@ -52,21 +60,27 @@ function applyQueryMeta(baseSql, baseParams, options = {}, searchColumns = []) {
   const lowerSql = sql.toLowerCase();
   const hasWhere = lowerSql.includes("where");
 
-  // 1. Search (LIKE across multiple columns)
+  // 1. Search (LIKE across multiple columns) — gunakan searchColumns yang sudah ditentukan
   if (search && searchColumns.length > 0) {
-    const searchConditions = searchColumns.map(col => `${col} LIKE ?`).join(" OR ");
-    whereClauses.push(`(${searchConditions})`);
-    searchColumns.forEach(() => params.push(`%${search}%`));
+    const validCols = searchColumns.filter(col => sanitizeColumnName(col));
+    if (validCols.length > 0) {
+      const searchConditions = validCols.map(col => `${col} LIKE ?`).join(" OR ");
+      whereClauses.push(`(${searchConditions})`);
+      validCols.forEach(() => params.push(`%${search}%`));
+    }
   }
 
-  // 2. Filter (Expects JSON object or string)
+  // 2. Filter (Expects JSON object or string) — validasi nama kolom
   if (filter) {
     try {
       const filterObj = typeof filter === 'string' ? JSON.parse(filter) : filter;
       Object.entries(filterObj).forEach(([col, val]) => {
         if (val !== undefined && val !== null && val !== '') {
-          whereClauses.push(`${col} = ?`);
-          params.push(val);
+          const safeCol = sanitizeColumnName(col);
+          if (safeCol) {
+            whereClauses.push(`${safeCol} = ?`);
+            params.push(val);
+          }
         }
       });
     } catch (e) { /* ignore invalid json */ }
@@ -80,25 +94,27 @@ function applyQueryMeta(baseSql, baseParams, options = {}, searchColumns = []) {
   const countSql = `SELECT COUNT(*) as total FROM (${sql}) AS t`;
   const countParams = [...params];
 
-  // 3. Sort (format: "column:asc" atau "column:desc")
+  // 3. Sort (format: "column:asc" atau "column:desc") — validasi nama kolom
   if (sort) {
-    let sortSql = "";
-    if (sort.includes(",")) {
-       // Multi sort
-       const sorts = sort.split(",").map(part => {
-         const [col, dir] = part.trim().split(":");
-         return `${col} ${dir?.toLowerCase() === "desc" ? "DESC" : "ASC"}`;
-       });
-       sortSql = sorts.join(", ");
-    } else {
-       const [col, dir] = sort.split(':');
-       sortSql = `${col} ${dir?.toLowerCase() === 'desc' ? 'DESC' : 'ASC'}`;
-    }
+    const validSortParts = [];
+    const sortParts = sort.includes(",") ? sort.split(",") : [sort];
     
-    if (lowerSql.includes("order by")) {
-      sql = sql.split(/order by/i)[0] + ` ORDER BY ${sortSql}`;
-    } else {
-      sql += ` ORDER BY ${sortSql}`;
+    sortParts.forEach(part => {
+      const [col, dir] = part.trim().split(":");
+      const safeCol = sanitizeColumnName(col);
+      if (safeCol) {
+        const direction = dir?.toLowerCase() === "desc" ? "DESC" : "ASC";
+        validSortParts.push(`${safeCol} ${direction}`);
+      }
+    });
+
+    if (validSortParts.length > 0) {
+      const sortSql = validSortParts.join(", ");
+      if (lowerSql.includes("order by")) {
+        sql = sql.split(/order by/i)[0] + ` ORDER BY ${sortSql}`;
+      } else {
+        sql += ` ORDER BY ${sortSql}`;
+      }
     }
   }
 

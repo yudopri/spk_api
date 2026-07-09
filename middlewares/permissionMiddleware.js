@@ -11,8 +11,7 @@ function hasPermission(permissionName) {
 
     return res.status(403).json({
       success: false,
-      message: `Anda tidak memiliki izin '${permissionName}'`,
-      required_path_hints: PERMISSION_MAP[permissionName] || []
+      message: `Anda tidak memiliki izin '${permissionName}'`
     });
   };
 }

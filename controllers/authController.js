@@ -28,13 +28,13 @@ const {
 } = require("../models/authModel");
 
 function signAccessToken(payload) {
-  return jwt.sign({ ...payload, token_type: "access" }, process.env.JWT_SECRET || "dev-secret", {
+  return jwt.sign({ ...payload, token_type: "access" }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_ACCESS_EXPIRES || "1h"
   });
 }
 
 function signRefreshToken(payload) {
-  return jwt.sign({ ...payload, token_type: "refresh" }, process.env.JWT_SECRET || "dev-secret", {
+  return jwt.sign({ ...payload, token_type: "refresh" }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_REFRESH_EXPIRES || "7d"
   });
 }
@@ -48,12 +48,12 @@ async function login(req, res) {
 
     const userMitra = await findMitraUserByEmail(email);
     if (!userMitra) {
-      return res.status(404).json({ status: "error", message: "User not found" });
+      return res.status(401).json({ status: "error", message: "Invalid email or password" });
     }
 
     const isValid = await bcrypt.compare(password, userMitra.password);
     if (!isValid) {
-      return res.status(401).json({ status: "error", message: "Invalid password" });
+      return res.status(401).json({ status: "error", message: "Invalid email or password" });
     }
 
     const employee = await findEmployeeByEmail(userMitra.email);
@@ -86,7 +86,8 @@ async function login(req, res) {
       permissions: permissionsList
     });
   } catch (error) {
-    return res.status(500).json({ status: "error", message: "Internal Server Error", error: error.message });
+    console.error("[LOGIN ERROR]", error);
+    return res.status(500).json({ status: "error", message: "Internal Server Error" });
   }
 }
 
@@ -115,7 +116,8 @@ async function refresh(req, res) {
 
     return res.status(200).json({ access_token: newAccessToken });
   } catch (error) {
-    return res.status(500).json({ message: "Internal Server Error", error: error.message });
+    console.error("[REFRESH ERROR]", error);
+    return res.status(500).json({ message: "Internal Server Error" });
   }
 }
 
@@ -215,7 +217,7 @@ async function getUsers(req, res) {
       meta: formatMeta(options, total)
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 
@@ -239,7 +241,7 @@ async function getRoles(req, res) {
     );
     return res.json({ success: true, data: enriched, meta: formatMeta(options, total) });
   } catch (error) {
-    return res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 
@@ -257,7 +259,7 @@ async function getRoleDetail(req, res) {
       data: { id: role.id, role_name: role.role_name, permissions }
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 
@@ -275,7 +277,7 @@ async function createRoleHandler(req, res) {
 
     return res.status(201).json({ success: true, id: result.id, role_name: result.role_name });
   } catch (error) {
-    return res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 
@@ -295,7 +297,7 @@ async function updateRoleHandler(req, res) {
 
     return res.json({ success: true, message: "Role berhasil diperbarui" });
   } catch (error) {
-    return res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 
@@ -311,7 +313,7 @@ async function getPermissionDetail(req, res) {
 
     return res.json({ success: true, data: perm });
   } catch (error) {
-    return res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 
@@ -331,7 +333,7 @@ async function updatePermissionHandler(req, res) {
 
     return res.json({ success: true, message: "Permission berhasil diperbarui" });
   } catch (error) {
-    return res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 
@@ -351,7 +353,7 @@ async function deletePermissionHandler(req, res) {
 
     return res.json({ success: true, message: "Permission berhasil dihapus" });
   } catch (error) {
-    return res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 
@@ -376,7 +378,7 @@ async function addPermissionToRoleHandler(req, res) {
 
     return res.json({ success: true, message: `Permission '${perm.permission_name}' ditambahkan ke role '${role.role_name}'` });
   } catch (error) {
-    return res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 
@@ -393,7 +395,7 @@ async function removePermissionFromRoleHandler(req, res) {
 
     return res.json({ success: true, message: "Permission berhasil dihapus dari role" });
   } catch (error) {
-    return res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 
@@ -418,7 +420,7 @@ async function bulkSetRolePermissionsHandler(req, res) {
       invalid_ids: result.invalidIds || []
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 

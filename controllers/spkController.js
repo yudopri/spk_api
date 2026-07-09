@@ -225,7 +225,7 @@ async function getPeriodeHandler(req, res) {
       meta: formatMeta(options, result.total)
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 
@@ -361,7 +361,7 @@ async function updatePeriodeHandler(req, res) {
     await logActivity(req, "UPDATE", "Periode", { Id: periodeId });
     return res.json({ success: true, message: "Periode berhasil diperbarui" });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 
@@ -428,7 +428,7 @@ async function getKpiHandler(req, res) {
       meta: formatMeta(options, result.total)
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 
@@ -468,7 +468,7 @@ async function getAttributesHandler(req, res) {
       meta: formatMeta(options, total)
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 
@@ -576,7 +576,7 @@ async function getKpiGroupsHandler(req, res) {
       meta: formatMeta(options, total)
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 
@@ -616,7 +616,7 @@ async function getGroupComparisonsHandler(req, res) {
     const data = await getGroupComparisons(periode_id);
     res.json({ success: true, data });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 
@@ -642,7 +642,7 @@ async function saveGroupComparisonsHandler(req, res) {
       res.json({ success: true, message: "Comparisons saved but no groups found" });
     }
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 
@@ -748,7 +748,7 @@ async function calculateWeightsHandler(req, res) {
 
     return res.json({ success: true, data: ahp.weights, consistency: ahp.consistency });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 async function processMooraPenilaian({ evals, periodeId, user }) {
@@ -1034,7 +1034,7 @@ async function calculateMooraHandler(req, res) {
     await logActivity(req, "CALCULATE", "MooraResult", { PeriodeId: periodeId, Count: resultRows.length });
     return res.json({ success: true, message: "Perangkingan MOORA selesai" });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 
@@ -1103,7 +1103,7 @@ async function getMooraResultHandler(req, res) {
   await logActivity(req, "VIEW", "MooraResult", { PeriodeId: periodeId, Count: data.length });
     return res.json({ success: true, data, meta: formatMeta(options, total) });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 
@@ -1124,7 +1124,7 @@ async function getDepartmentsHandler(req, res) {
       meta: formatMeta(options, total)
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 
@@ -1176,7 +1176,7 @@ async function getEmployeesHandler(req, res) {
       meta: formatMeta(options, total)
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 
@@ -1199,7 +1199,7 @@ async function getWorkLocationsHandler(req, res) {
       meta: formatMeta(options, total)
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 
@@ -1224,7 +1224,7 @@ async function getAuditLogsHandler(req, res) {
       meta: formatMeta(options, result.total)
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 
