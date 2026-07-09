@@ -1246,17 +1246,29 @@ async function getIndividualReportHandler(req, res) {
     const employees = await getEmployeesByIds([Number(karyawan_id)]);
     const employee = employees[0] || null;
 
+    // Build data per KPI with real evaluation values (Realisasi)
     const data = kpis.map((k) => {
       const ev = userEvals.find((e) => Number(e.KpiId) === Number(k.Id));
       return {
         Kriteria: k.NamaKpi,
-        Nilai: ev ? ev.Realisasi : 0,
+        Realisasi: ev ? ev.Realisasi : 0,
         Satuan: k.simbol || "",
         group_id: k.group_id || null,
         nama_grup: k.nama_grup || null,
-        bobot_ahp: Number(k.BobotAhp || 0),
-        bobot_grup: Number(k.bobot_grup || 1)
+        Target: k.Target || null
       };
+    });
+
+    // Group KPIs by group_id, preserving order
+    const groupOrder = [];
+    const groupMap = new Map();
+    data.forEach((item) => {
+      const gid = item.group_id || "ungrouped";
+      if (!groupMap.has(gid)) {
+        groupMap.set(gid, { name: item.nama_grup || "Lainnya", items: [] });
+        groupOrder.push(gid);
+      }
+      groupMap.get(gid).items.push(item);
     });
 
     const summaryMeta = await getHasilAkhirByPeriode(Number(periode_id));
@@ -1296,71 +1308,109 @@ async function getIndividualReportHandler(req, res) {
 
     if (format === "pdf") {
       const pdfDoc = await PDFDocument.create();
-      // Use StandardFonts without embedding to avoid potential path issues in some environments
       const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
       const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-      let page = pdfDoc.addPage([595.28, 841.89]); // A4
-      const { width, height } = page.getSize();
 
-      page.drawText("FORM PENILAIAN KARYAWAN", { x: 50, y: height - 50, size: 16, font: fontBold });
-      page.drawText(`Nama: ${employee?.name || "N/A"}`, { x: 50, y: height - 80, size: 12, font });
-      page.drawText(`NIK: ${employee?.nik || "N/A"}`, { x: 50, y: height - 100, size: 12, font });
-      page.drawText(`Periode: ${periode?.NamaPeriode || "N/A"} ${periode?.Tahun || ""}`, { x: 50, y: height - 120, size: 12, font });
+      const PAGE_WIDTH = 595.28;
+      const PAGE_HEIGHT = 841.89;
+      const MARGIN_X = 50;
+      const MARGIN_BOTTOM = 60;
 
-      let yPos = height - 160;
-      page.drawText("No", { x: 50, y: yPos, size: 11, font: fontBold });
-      page.drawText("Kriteria", { x: 80, y: yPos, size: 11, font: fontBold });
-      page.drawText("Nilai", { x: 450, y: yPos, size: 11, font: fontBold });
-      page.drawLine({ start: { x: 50, y: yPos - 5 }, end: { x: 545, y: yPos - 5 }, thickness: 1 });
-
-      yPos -= 25;
-      data.forEach((item, idx) => {
-        // Ensure values are strings
-        const kriteria = String(item.Kriteria || "");
-        const nilai = String(item.Realisasi || 0);
-        const satuan = String(item.nama_satuan || "");
-
-        page.drawText(`${idx + 1}`, { x: 50, y: yPos, size: 10, font });
-        page.drawText(kriteria, { x: 80, y: yPos, size: 10, font });
-        page.drawText(`${nilai} ${satuan}`, { x: 450, y: yPos, size: 10, font });
-        yPos -= 20;
-
-        // Add new page if needed
-        if (yPos < 150) {
-          page = pdfDoc.addPage([595.28, 841.89]);
-          yPos = height - 50;
+      function ensureSpace(currentPage, yPosRef, needed) {
+        let page = currentPage;
+        if (yPosRef.value < MARGIN_BOTTOM + needed) {
+          page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+          yPosRef.value = PAGE_HEIGHT - 50;
         }
-      });
+        return page;
+      }
 
-      page.drawLine({ start: { x: 50, y: yPos + 10 }, end: { x: 545, y: yPos + 10 }, thickness: 1 });
-      yPos -= 20;
+      let page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+      const { height } = page.getSize();
+
+      // --- Header section ---
+      page.drawText("FORM PENILAIAN KARYAWAN", { x: MARGIN_X, y: height - 50, size: 16, font: fontBold });
+      page.drawText(`Nama: ${employee?.name || "N/A"}`, { x: MARGIN_X, y: height - 80, size: 12, font });
+      page.drawText(`NIK: ${employee?.nik || "N/A"}`, { x: MARGIN_X, y: height - 100, size: 12, font });
+      page.drawText(`Periode: ${periode?.NamaPeriode || "N/A"} ${periode?.Tahun || ""}`, { x: MARGIN_X, y: height - 120, size: 12, font });
+
+      let yPos = { value: height - 155 };
+      const tableRight = PAGE_WIDTH - 50;
+      const noX = MARGIN_X;
+      const kriteriaX = MARGIN_X + 35;
+      const nilaiX = tableRight - 80;
+      const lineY = -5;
+
+      // --- Grouped tables ---
+      let globalIdx = 0;
+      for (const gid of groupOrder) {
+        const group = groupMap.get(gid);
+
+        page = ensureSpace(page, yPos, 60);
+
+        // Group header bar
+        page.drawRectangle({
+          x: noX, y: yPos.value - 3,
+          width: tableRight - noX, height: 18,
+          color: rgb(0.85, 0.85, 0.85),
+          borderWidth: 0
+        });
+        page.drawText(group.name, { x: noX + 5, y: yPos.value, size: 12, font: fontBold });
+        yPos.value -= 22;
+
+        // Table header
+        page.drawText("No", { x: noX + 5, y: yPos.value, size: 10, font: fontBold });
+        page.drawText("Kriteria", { x: kriteriaX, y: yPos.value, size: 10, font: fontBold });
+        page.drawText("Realisasi", { x: nilaiX, y: yPos.value, size: 10, font: fontBold });
+        page.drawLine({ start: { x: noX, y: yPos.value + lineY }, end: { x: tableRight, y: yPos.value + lineY }, thickness: 1 });
+        yPos.value -= 18;
+
+        // Table rows
+        for (const item of group.items) {
+          globalIdx++;
+          page = ensureSpace(page, yPos, 15);
+
+          const kriteriaStr = String(item.Kriteria || "");
+          const realisasiStr = String(item.Realisasi ?? 0);
+          const satuanStr = String(item.Satuan || "");
+
+          page.drawText(`${globalIdx}`, { x: noX + 12, y: yPos.value, size: 10, font });
+          page.drawText(kriteriaStr, { x: kriteriaX, y: yPos.value, size: 10, font });
+          page.drawText(`${realisasiStr} ${satuanStr}`.trim(), { x: nilaiX, y: yPos.value, size: 10, font });
+          yPos.value -= 18;
+        }
+
+        // Bottom line for group table
+        page.drawLine({ start: { x: noX, y: yPos.value + 10 }, end: { x: tableRight, y: yPos.value + 10 }, thickness: 1 });
+        yPos.value -= 15;
+      }
+
+      // --- Hasil Akhir ---
+      page = ensureSpace(page, yPos, 40);
+      yPos.value -= 10;
       if (result) {
         const score = typeof result.NilaiOptimasi === "number" ? result.NilaiOptimasi.toFixed(4) : "0";
-        page.drawText(`Hasil Akhir: ${score}`, { x: 50, y: yPos, size: 11, font: fontBold });
-        page.drawText(`Ranking: ${result.Ranking || "-"}`, { x: 450, y: yPos, size: 11, font: fontBold });
+        page.drawText(`Hasil Akhir: ${score}`, { x: MARGIN_X, y: yPos.value, size: 11, font: fontBold });
+        page.drawText(`Ranking: ${result.Ranking || "-"}`, { x: tableRight - 100, y: yPos.value, size: 11, font: fontBold });
       }
 
-      yPos -= 80;
-      // Protection for footer position
-      if (yPos < 100) {
-        page = pdfDoc.addPage([595.28, 841.89]);
-        yPos = height - 100;
-      }
+      yPos.value -= 50;
 
-      page.drawText("Mengetahui,", { x: 50, y: yPos, size: 11, font });
-      page.drawText("Disetujui Oleh,", { x: 380, y: yPos, size: 11, font });
-      yPos -= 60;
-      
+      // --- Footer / Signatures ---
+      page = ensureSpace(page, yPos, 90);
+      page.drawText("Mengetahui,", { x: MARGIN_X, y: yPos.value, size: 11, font });
+      page.drawText("Disetujui Oleh,", { x: 380, y: yPos.value, size: 11, font });
+      yPos.value -= 60;
+
       const creatorName = createdByInfo ? (createdByInfo.name || ".................................") : ".................................";
       const creatorJabatan = createdByInfo ? (createdByInfo.jabatan || "Kepala Divisi") : "Kepala Divisi";
-      
       const approverName = approvedByInfo ? (approvedByInfo.name || ".................................") : ".................................";
       const approverJabatan = approvedByInfo ? (approvedByInfo.jabatan || "Pimpinan") : "Pimpinan";
 
-      page.drawText(`( ${creatorName} )`, { x: 50, y: yPos, size: 11, font });
-      page.drawText(`( ${approverName} )`, { x: 380, y: yPos, size: 11, font });
-      page.drawText(creatorJabatan, { x: 50, y: yPos - 15, size: 10, font });
-      page.drawText(approverJabatan, { x: 380, y: yPos - 15, size: 10, font });
+      page.drawText(`( ${creatorName} )`, { x: MARGIN_X, y: yPos.value, size: 11, font });
+      page.drawText(`( ${approverName} )`, { x: 380, y: yPos.value, size: 11, font });
+      page.drawText(creatorJabatan, { x: MARGIN_X, y: yPos.value - 15, size: 10, font });
+      page.drawText(approverJabatan, { x: 380, y: yPos.value - 15, size: 10, font });
 
       const pdfBytes = await pdfDoc.save();
       res.setHeader("Content-Type", "application/pdf");
@@ -1368,6 +1418,7 @@ async function getIndividualReportHandler(req, res) {
       return res.end(Buffer.from(pdfBytes));
     }
 
+    // JSON response
     return res.json({
       success: true,
       metadata: {
@@ -1379,7 +1430,10 @@ async function getIndividualReportHandler(req, res) {
         DisetujuiOleh: approvedByInfo ? `${approvedByInfo.name} (${approvedByInfo.jabatan || "Pimpinan"})` : "N/A",
         Status: result?.status || "Draft"
       },
-      rincian: data,
+      rincian: groupOrder.map((gid) => ({
+        group: groupMap.get(gid).name,
+        items: groupMap.get(gid).items
+      })),
       kesimpulan: result
         ? {
             Ranking: result.Ranking,
@@ -1415,51 +1469,171 @@ async function getSummaryReportHandler(req, res) {
     const employees = await getEmployeesByIds(employeeIds);
     const empMap = new Map(employees.map((e) => [Number(e.id), e]));
 
+    // Evaluation map: KaryawanId -> KpiId -> Realisasi
     const evalMap = {};
     evaluations.forEach((ev) => {
       const kId = Number(ev.KaryawanId);
       if (!evalMap[kId]) evalMap[kId] = {};
-      evalMap[kId][Number(ev.KpiId)] = ev.Nilai;
+      evalMap[kId][Number(ev.KpiId)] = ev.Realisasi ?? ev.Nilai ?? 0;
+    });
+
+    // Group KPIs by group_id, preserving order
+    const groupOrder = [];
+    const groupMap = new Map();
+    kpis.forEach((k) => {
+      const gid = k.group_id || "ungrouped";
+      if (!groupMap.has(gid)) {
+        groupMap.set(gid, { name: k.nama_grup || "Lainnya", kpis: [] });
+        groupOrder.push(gid);
+      }
+      groupMap.get(gid).kpis.push(k);
     });
 
     const data = results.map((res) => {
       const emp = empMap.get(Number(res.KaryawanId));
       const row = {
         NIK: emp?.nik || "N/A",
-        Nama: emp?.name || "N/A",
-        Ranking: res.Ranking,
-        Skor: res.NilaiOptimasi
+        Nama: emp?.name || "N/A"
       };
 
       kpis.forEach((k) => {
         row[k.NamaKpi] = evalMap[Number(res.KaryawanId)]?.[Number(k.Id)] || 0;
       });
 
+      row.Skor = res.NilaiOptimasi;
+      row.Ranking = res.Ranking;
       return row;
     });
 
     if (format === "excel") {
       const workbook = new ExcelJS.Workbook();
-      const worksheet = workbook.addWorksheet("Rekapitulasi");
-
-      const columns = [
-        { header: "No", key: "no", width: 5 },
-        { header: "NIK", key: "NIK", width: 15 },
-        { header: "Nama", key: "Nama", width: 30 },
-        ...kpis.map((k) => ({ header: k.NamaKpi, key: k.NamaKpi, width: 15 })),
-        { header: "Skor", key: "Skor", width: 12 },
-        { header: "Ranking", key: "Ranking", width: 10 }
-      ];
-
-      worksheet.columns = columns;
-
-      data.forEach((row, idx) => {
-        worksheet.addRow({ no: idx + 1, ...row });
+      const worksheet = workbook.addWorksheet("Rekapitulasi", {
+        views: [{ state: "frozen", ySplit: 2 }]
       });
 
-      // Styling
-      worksheet.getRow(1).font = { bold: true };
-      worksheet.getRow(1).alignment = { vertical: "middle", horizontal: "center" };
+      // Thin border definition
+      const thinBorder = {
+        top: { style: "thin" },
+        bottom: { style: "thin" },
+        left: { style: "thin" },
+        right: { style: "thin" }
+      };
+      const noFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFFFF" } };
+      const groupFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9E1F2" } };
+      const headerFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFED7D31" } };
+
+      // --- Row 1: Group headers (merged across KPI columns) + fixed cols ---
+      const fixedColCount = 3;
+      worksheet.getCell(1, 1).value = "No";
+      worksheet.getCell(1, 2).value = "NIK";
+      worksheet.getCell(1, 3).value = "Nama";
+
+      let colIdx = fixedColCount + 1;
+      for (const gid of groupOrder) {
+        const group = groupMap.get(gid);
+        const startCol = colIdx;
+        const endCol = colIdx + group.kpis.length - 1;
+        if (group.kpis.length > 1) {
+          worksheet.mergeCells(1, startCol, 1, endCol);
+        }
+        worksheet.getCell(1, startCol).value = group.name;
+        colIdx = endCol + 1;
+      }
+
+      const skorCol = colIdx;
+      const rankingCol = colIdx + 1;
+      worksheet.getCell(1, skorCol).value = "Skor MOORA";
+      worksheet.getCell(1, rankingCol).value = "Ranking";
+
+      // Style Row 1 (group headers)
+      for (let c = 1; c <= rankingCol; c++) {
+        const cell = worksheet.getCell(1, c);
+        cell.font = { bold: true, size: 11, color: { argb: "FFFFFFFF" } };
+        cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+        cell.border = thinBorder;
+        if (c <= fixedColCount || c >= skorCol) {
+          cell.fill = headerFill;
+        } else {
+          cell.fill = groupFill;
+        }
+      }
+
+      // --- Row 2: Individual KPI headers ---
+      worksheet.getCell(2, 1).value = "No";
+      worksheet.getCell(2, 2).value = "NIK";
+      worksheet.getCell(2, 3).value = "Nama";
+
+      colIdx = fixedColCount + 1;
+      for (const gid of groupOrder) {
+        const group = groupMap.get(gid);
+        for (const kpi of group.kpis) {
+          worksheet.getCell(2, colIdx).value = kpi.NamaKpi;
+          colIdx++;
+        }
+      }
+
+      worksheet.getCell(2, skorCol).value = "Skor";
+      worksheet.getCell(2, rankingCol).value = "Ranking";
+
+      // Style Row 2
+      for (let c = 1; c <= rankingCol; c++) {
+        const cell = worksheet.getCell(2, c);
+        cell.font = { bold: true, size: 10 };
+        cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+        cell.border = thinBorder;
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF2CC" } };
+      }
+
+      // --- Data Rows ---
+      data.forEach((row, idx) => {
+        const rowNum = idx + 3; // data starts at row 3
+
+        worksheet.getCell(rowNum, 1).value = idx + 1;
+        worksheet.getCell(rowNum, 1).alignment = { horizontal: "center" };
+
+        worksheet.getCell(rowNum, 2).value = row.NIK;
+        worksheet.getCell(rowNum, 3).value = row.Nama;
+
+        colIdx = fixedColCount + 1;
+        for (const gid of groupOrder) {
+          const group = groupMap.get(gid);
+          for (const kpi of group.kpis) {
+            worksheet.getCell(rowNum, colIdx).value = row[kpi.NamaKpi] || 0;
+            worksheet.getCell(rowNum, colIdx).numFmt = "0.####";
+            colIdx++;
+          }
+        }
+
+        worksheet.getCell(rowNum, skorCol).value = row.Skor;
+        worksheet.getCell(rowNum, skorCol).numFmt = "0.####";
+        worksheet.getCell(rowNum, rankingCol).value = row.Ranking;
+        worksheet.getCell(rowNum, rankingCol).alignment = { horizontal: "center" };
+
+        // Apply borders to all data cells
+        for (let c = 1; c <= rankingCol; c++) {
+          worksheet.getCell(rowNum, c).border = thinBorder;
+          worksheet.getCell(rowNum, c).font = { size: 10 };
+          // Zebra striping
+          if (idx % 2 === 0) {
+            worksheet.getCell(rowNum, c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF2F2F2" } };
+          }
+        }
+      });
+
+      // Set column widths
+      worksheet.getColumn(1).width = 5;   // No
+      worksheet.getColumn(2).width = 16;  // NIK
+      worksheet.getColumn(3).width = 28;  // Nama
+      let ki = fixedColCount + 1;
+      for (const gid of groupOrder) {
+        const group = groupMap.get(gid);
+        for (let j = 0; j < group.kpis.length; j++) {
+          worksheet.getColumn(ki).width = 14;
+          ki++;
+        }
+      }
+      worksheet.getColumn(skorCol).width = 12;
+      worksheet.getColumn(rankingCol).width = 10;
 
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.setHeader("Content-Disposition", `attachment; filename="Rekap_${periode?.NamaPeriode || "Periode"}.xlsx"`);
