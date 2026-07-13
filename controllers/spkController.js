@@ -1431,7 +1431,7 @@ async function getIndividualReportHandler(req, res) {
         Status: result?.status || "Draft"
       },
       rincian: groupOrder.map((gid) => ({
-        group: groupMap.get(gid).name,
+        group_name: groupMap.get(gid).name,
         items: groupMap.get(gid).items
       })),
       kesimpulan: result
