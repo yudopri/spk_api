@@ -86,7 +86,7 @@ async function login(req, res) {
       permissions: permissionsList
     });
 
-    // ✅ Tambahkan audit log untuk LOGIN
+    // ✅ Tambahkan audit log untuk LOGIN + last_login langsung di INSERT
     const { insertAuditLog } = require("../models/spkModel");
     try {
       await insertAuditLog({
@@ -103,18 +103,11 @@ async function login(req, res) {
         ipAddress: req.ip,
         userAgent: req.headers["user-agent"],
         url: req.originalUrl,
-        method: req.method
+        method: req.method,
+        lastLogin: new Date()
       });
-
-      // Update last_login timestamp on the audit_logs row we just inserted
-      const { querySpk } = require("../config/db");
-      await querySpk(
-        `UPDATE audit_logs SET last_login = NOW() WHERE UserId = ? AND Action = 'LOGIN' ORDER BY Id DESC LIMIT 1`,
-        [userMitra.id]
-      );
     } catch (auditError) {
       console.error("[AUDIT LOGIN ERROR]", auditError);
-      // Jangan disturb response utama jika audit gagal
     }
 
     return response;

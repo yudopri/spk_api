@@ -1245,6 +1245,8 @@ async function getAuditLogsHandler(req, res) {
         Details: row.Details,
         IpAddress: row.IpAddress,
         UserAgent: row.UserAgent,
+        url: row.url || null,
+        method: row.method || null,
         CreatedAt: toIso(row.CreatedAt),
         last_login: row.last_login ? toIso(row.last_login) : null
       })),

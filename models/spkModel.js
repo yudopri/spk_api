@@ -31,11 +31,11 @@ function decryptLaravelNik(nik_ktp) {
   }
 }
 
-async function insertAuditLog({ userId, email, name, action, entityName, details, ipAddress, userAgent, url, method }) {
+async function insertAuditLog({ userId, email, name, action, entityName, details, ipAddress, userAgent, url, method, lastLogin }) {
   await querySpk(
-    `INSERT INTO audit_logs(Userid, Email, Name, Action, EntityName, Details, IpAddress, UserAgent, url, method)
-     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [userId || 0, email || "-", name || "-", action, entityName, JSON.stringify(details || {}), ipAddress || null, userAgent || null, url || null, method || null]
+    `INSERT INTO audit_logs(Userid, Email, Name, Action, EntityName, Details, IpAddress, UserAgent, url, method, last_login)
+     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [userId || 0, email || "-", name || "-", action, entityName, JSON.stringify(details || {}), ipAddress || null, userAgent || null, url || null, method || null, lastLogin || null]
   );
 }
 
@@ -695,9 +695,11 @@ async function getEmployeeLocationsByIds(employeeIds) {
 }
 
 async function getAuditLogs(options = {}) {
-  const baseSql = `SELECT Id, UserId, Email, Name, Action, EntityName, Details, IpAddress, UserAgent, CreatedAt
+  const baseSql = `SELECT Id, UserId, Email, Name, Action, EntityName, Details, IpAddress, UserAgent, CreatedAt, url, method, last_login
      FROM audit_logs`;
-  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, [], options, ["Email", "Action", "EntityName"]);
+  // Default sort: CreatedAt DESC (terbaru di atas) jika user tidak specify sort
+  const opts = { sort: "CreatedAt:desc", ...options };
+  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, [], opts, ["Email", "Action", "EntityName"]);
 
   const [rows, totalRes] = await Promise.all([
     querySpk(sql, params),
