@@ -897,7 +897,7 @@ async function persistMooraResultSnapshots(periodeId, kpis, rankedResults, detai
         periodeId,
         employeeId: row.employeeId,
         kpiMeta,
-        realisasi: detail.NilaiAsli,
+        realisasi: detail.Realisasi,
         achievement: detail.NilaiAsli,
         rank: row.rank,
         yi: row.yi

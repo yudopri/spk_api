@@ -177,6 +177,7 @@ function scoreMooraChunk(evaluations, coeffMap) {
       group_id: ev.group_id || null,
       nama_grup: ev.nama_grup || null,
       bobot_grup: Number(ev.bobot_grup || 1),
+      Realisasi: Number(ev.Realisasi ?? 0),
       NilaiAsli: baseValue,
       NilaiNormalisasi: normalized,
       NilaiTerbobot: weighted,
