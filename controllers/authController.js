@@ -71,7 +71,7 @@ async function login(req, res) {
       lokasi_kerja: employee?.lokasikerja || null
     };
 
-    return res.status(200).json({
+    const response = await res.status(200).json({
       status: "success",
       access_token: signAccessToken(claims),
       refresh_token: signRefreshToken({ sub: String(userMitra.id) }),
@@ -85,6 +85,39 @@ async function login(req, res) {
       },
       permissions: permissionsList
     });
+
+    // ✅ Tambahkan audit log untuk LOGIN
+    const { insertAuditLog } = require("../models/spkModel");
+    try {
+      await insertAuditLog({
+        userId: userMitra.id,
+        email: userMitra.email,
+        name: employee?.name || userMitra.name,
+        action: "LOGIN",
+        entityName: "Authentication",
+        details: {
+          method: "email",
+          ipAddress: req.ip,
+          userAgent: req.headers["user-agent"]
+        },
+        ipAddress: req.ip,
+        userAgent: req.headers["user-agent"],
+        url: req.originalUrl,
+        method: req.method
+      });
+
+      // Update last_login timestamp on the audit_logs row we just inserted
+      const { querySpk } = require("../config/db");
+      await querySpk(
+        `UPDATE audit_logs SET last_login = NOW() WHERE UserId = ? AND Action = 'LOGIN' ORDER BY Id DESC LIMIT 1`,
+        [userMitra.id]
+      );
+    } catch (auditError) {
+      console.error("[AUDIT LOGIN ERROR]", auditError);
+      // Jangan disturb response utama jika audit gagal
+    }
+
+    return response;
   } catch (error) {
     console.error("[LOGIN ERROR]", error);
     return res.status(500).json({ status: "error", message: "Internal Server Error" });
@@ -156,17 +189,37 @@ async function getPermissions(req, res) {
 }
 
 async function createPermissionHandler(req, res) {
-  const { permission_name: permissionName, path } = req.body || {};
-  if (!permissionName) {
-    return res.status(400).json({ success: false, message: "permission_name is required" });
-  }
+  try {
+    const { permission_name: permissionName, path } = req.body || {};
+    if (!permissionName) {
+      return res.status(400).json({ success: false, message: "permission_name is required" });
+    }
 
-  const created = await createPermission(permissionName, path || "");
-  if (created.exists) {
-    return res.status(400).json({ success: false, message: "Permission already exists" });
-  }
+    const created = await createPermission(permissionName, path || "");
+    if (created.exists) {
+      return res.status(400).json({ success: false, message: "Permission already exists" });
+    }
 
-  return res.json({ success: true, id: created.id });
+    // ✅ Audit log CREATE
+    const { insertAuditLog } = require("../models/spkModel");
+    await insertAuditLog({
+      userId: req.user?.sub,
+      email: req.user?.email,
+      name: req.user?.name,
+      action: "CREATE",
+      entityName: "Permission",
+      details: { permission_name: permissionName, path },
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"],
+      url: req.originalUrl,
+      method: req.method
+    });
+
+    return res.json({ success: true, id: created.id });
+  } catch (error) {
+    console.error("[CREATE PERMISSION ERROR]", error);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
 }
 
 async function getPermissionsByMitraRole(req, res) {
@@ -176,16 +229,36 @@ async function getPermissionsByMitraRole(req, res) {
 }
 
 async function assignPermissionsToMitraRole(req, res) {
-  const roleName = req.params.role_name;
-  if (!ROLE_ENUM.includes(roleName)) {
-    return res.status(400).json({ success: false, message: "Role name is not valid according to Mitra Enum" });
+  try {
+    const roleName = req.params.role_name;
+    if (!ROLE_ENUM.includes(roleName)) {
+      return res.status(400).json({ success: false, message: "Role name is not valid according to Mitra Enum" });
+    }
+
+    const permissionIds = Array.isArray(req.body) ? req.body : [];
+    const role = await getOrCreateRoleByName(roleName);
+    await setRolePermissions(role.id, permissionIds);
+
+    // ✅ Audit log - Assign permissions to Mitra role
+    const { insertAuditLog } = require("../models/spkModel");
+    await insertAuditLog({
+      userId: req.user?.sub,
+      email: req.user?.email,
+      name: req.user?.name,
+      action: "UPDATE",
+      entityName: "Mitra_Role_Permission",
+      details: { role_name: roleName, permission_ids: permissionIds },
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"],
+      url: req.originalUrl,
+      method: req.method
+    });
+
+    return res.json({ success: true, message: `Permissions updated for Mitra role: ${roleName}` });
+  } catch (error) {
+    console.error("[ASSIGN MITRA ROLE ERROR]", error);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
-
-  const permissionIds = Array.isArray(req.body) ? req.body : [];
-  const role = await getOrCreateRoleByName(roleName);
-  await setRolePermissions(role.id, permissionIds);
-
-  return res.json({ success: true, message: `Permissions updated for Mitra role: ${roleName}` });
 }
 
 async function getRolesMitra(_req, res) {
@@ -275,8 +348,24 @@ async function createRoleHandler(req, res) {
       return res.status(409).json({ success: false, message: `Role '${role_name}' sudah ada`, id: result.id });
     }
 
+    // ✅ Audit log CREATE
+    const { insertAuditLog } = require("../models/spkModel");
+    await insertAuditLog({
+      userId: req.user?.sub,
+      email: req.user?.email,
+      name: req.user?.name,
+      action: "CREATE",
+      entityName: "Role",
+      details: { role_name: result.role_name },
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"],
+      url: req.originalUrl,
+      method: req.method
+    });
+
     return res.status(201).json({ success: true, id: result.id, role_name: result.role_name });
   } catch (error) {
+    console.error("[CREATE ROLE ERROR]", error);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
@@ -295,8 +384,24 @@ async function updateRoleHandler(req, res) {
     if (result.notFound) return res.status(404).json({ success: false, message: "Role tidak ditemukan" });
     if (result.conflict) return res.status(409).json({ success: false, message: `Role '${role_name}' sudah digunakan role lain` });
 
+    // ✅ Audit log UPDATE
+    const { insertAuditLog } = require("../models/spkModel");
+    await insertAuditLog({
+      userId: req.user?.sub,
+      email: req.user?.email,
+      name: req.user?.name,
+      action: "UPDATE",
+      entityName: "Role",
+      details: { role_name: result.role_name },
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"],
+      url: req.originalUrl,
+      method: req.method
+    });
+
     return res.json({ success: true, message: "Role berhasil diperbarui" });
   } catch (error) {
+    console.error("[UPDATE ROLE ERROR]", error);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
@@ -331,8 +436,24 @@ async function updatePermissionHandler(req, res) {
     if (result.notFound) return res.status(404).json({ success: false, message: "Permission tidak ditemukan" });
     if (result.conflict) return res.status(409).json({ success: false, message: `Permission '${permission_name}' sudah ada` });
 
+    // ✅ Audit log UPDATE
+    const { insertAuditLog } = require("../models/spkModel");
+    await insertAuditLog({
+      userId: req.user?.sub,
+      email: req.user?.email,
+      name: req.user?.name,
+      action: "UPDATE",
+      entityName: "Permission",
+      details: { permission_name: permission_name, path },
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"],
+      url: req.originalUrl,
+      method: req.method
+    });
+
     return res.json({ success: true, message: "Permission berhasil diperbarui" });
   } catch (error) {
+    console.error("[UPDATE PERMISSION ERROR]", error);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
@@ -351,8 +472,24 @@ async function deletePermissionHandler(req, res) {
       });
     }
 
+    // ✅ Audit log DELETE
+    const { insertAuditLog } = require("../models/spkModel");
+    await insertAuditLog({
+      userId: req.user?.sub,
+      email: req.user?.email,
+      name: req.user?.name,
+      action: "DELETE",
+      entityName: "Permission",
+      details: { id },
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"],
+      url: req.originalUrl,
+      method: req.method
+    });
+
     return res.json({ success: true, message: "Permission berhasil dihapus" });
   } catch (error) {
+    console.error("[DELETE PERMISSION ERROR]", error);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
@@ -376,8 +513,24 @@ async function addPermissionToRoleHandler(req, res) {
       return res.status(409).json({ success: false, message: "Permission sudah ditambahkan ke role ini" });
     }
 
+    // ✅ Audit log - Tambah permission ke role
+    const { insertAuditLog } = require("../models/spkModel");
+    await insertAuditLog({
+      userId: req.user?.sub,
+      email: req.user?.email,
+      name: req.user?.name,
+      action: "UPDATE",
+      entityName: "Role_Permission",
+      details: { role_name: role.role_name, permission_name: perm.permission_name, add: true },
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"],
+      url: req.originalUrl,
+      method: req.method
+    });
+
     return res.json({ success: true, message: `Permission '${perm.permission_name}' ditambahkan ke role '${role.role_name}'` });
   } catch (error) {
+    console.error("[ADD PERMISSION TO ROLE ERROR]", error);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
@@ -393,8 +546,24 @@ async function removePermissionFromRoleHandler(req, res) {
       return res.status(404).json({ success: false, message: "Mapping tidak ditemukan" });
     }
 
+    // ✅ Audit log - Hapus permission dari role
+    const { insertAuditLog } = require("../models/spkModel");
+    await insertAuditLog({
+      userId: req.user?.sub,
+      email: req.user?.email,
+      name: req.user?.name,
+      action: "UPDATE",
+      entityName: "Role_Permission",
+      details: { remove: true },
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"],
+      url: req.originalUrl,
+      method: req.method
+    });
+
     return res.json({ success: true, message: "Permission berhasil dihapus dari role" });
   } catch (error) {
+    console.error("[REMOVE PERMISSION FROM ROLE ERROR]", error);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
@@ -413,6 +582,22 @@ async function bulkSetRolePermissionsHandler(req, res) {
     }
 
     const result = await bulkSetRolePermissions(roleId, permission_ids);
+
+    // ✅ Audit log - Bulk set role permissions
+    const { insertAuditLog } = require("../models/spkModel");
+    await insertAuditLog({
+      userId: req.user?.sub,
+      email: req.user?.email,
+      name: req.user?.name,
+      action: "UPDATE",
+      entityName: "Role_Permission",
+      details: { role_name: role.role_name, assigned: result.assigned, invalid_ids: result.invalidIds || [], permission_ids },
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"],
+      url: req.originalUrl,
+      method: req.method
+    });
+
     return res.json({
       success: true,
       message: `Permission berhasil diatur untuk role '${role.role_name}'`,
@@ -420,6 +605,7 @@ async function bulkSetRolePermissionsHandler(req, res) {
       invalid_ids: result.invalidIds || []
     });
   } catch (error) {
+    console.error("[BULK SET ROLE PERMISSIONS ERROR]", error);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }

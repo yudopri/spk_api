@@ -84,26 +84,14 @@ function calculateAchievement({ target, realisasi, tipe }) {
     return { achievement: 0, valid: false, message: "Target KPI tidak valid" };
   }
 
-  if (!Number.isFinite(realisasiValue) || realisasiValue < 0) {
-    return { achievement: 0, valid: false, message: "Realisasi KPI tidak valid" };
-  }
-
-  if (realisasiValue === 0) {
-    return {
-      achievement: 0,
-      valid: false,
-      message: "Realisasi KPI bernilai 0 sehingga achievement tidak dapat dihitung"
-    };
-  }
-
   const achievement =
     normalizedType === "cost"
       ? (targetValue / realisasiValue) * 100
       : (realisasiValue / targetValue) * 100;
 
   return {
-    achievement,
-    valid: Number.isFinite(achievement) && achievement >= 0,
+    achievement: Number.isFinite(achievement) ? achievement : 0,
+    valid: Number.isFinite(achievement), // ✅ Achievement=0 valid (realisasi=0) dan achievement bisa < 0 (cost dengan realisasi > target)
     message: null
   };
 }

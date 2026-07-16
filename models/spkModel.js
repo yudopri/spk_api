@@ -31,12 +31,27 @@ function decryptLaravelNik(nik_ktp) {
   }
 }
 
-async function insertAuditLog({ userId, username, action, entityName, details, ipAddress, userAgent }) {
+async function insertAuditLog({ userId, email, name, action, entityName, details, ipAddress, userAgent, url, method }) {
   await querySpk(
-    `INSERT INTO audit_logs(UserId, Username, Action, EntityName, Details, IpAddress, UserAgent)
-     VALUES(?, ?, ?, ?, ?, ?, ?)`,
-    [userId || 0, username || "System", action, entityName, JSON.stringify(details || {}), ipAddress || null, userAgent || null]
+    `INSERT INTO audit_logs(Userid, Email, Name, Action, EntityName, Details, IpAddress, UserAgent, url, method)
+     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [userId || 0, email || "-", name || "-", action, entityName, JSON.stringify(details || {}), ipAddress || null, userAgent || null, url || null, method || null]
   );
+}
+
+async function updateLastLogin(userId, email) {
+  await querySpk(
+    `UPDATE audit_logs SET last_login = NOW() WHERE UserId = ? AND Action = 'LOGIN' ORDER BY Id DESC LIMIT 1`,
+    [userId]
+  );
+}
+
+async function getLastLoginByEmail(email) {
+  const rows = await querySpk(
+    `SELECT last_login FROM audit_logs WHERE Email = ? AND Action = 'LOGIN' ORDER BY Id DESC LIMIT 1`,
+    [email]
+  );
+  return rows[0]?.last_login || null;
 }
 
 async function getPeriodes(options = {}) {
@@ -680,9 +695,9 @@ async function getEmployeeLocationsByIds(employeeIds) {
 }
 
 async function getAuditLogs(options = {}) {
-  const baseSql = `SELECT Id, UserId, Username, Action, EntityName, Details, IpAddress, UserAgent, CreatedAt
+  const baseSql = `SELECT Id, UserId, Email, Name, Action, EntityName, Details, IpAddress, UserAgent, CreatedAt
      FROM audit_logs`;
-  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, [], options, ["Username", "Action", "EntityName"]);
+  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, [], options, ["Email", "Action", "EntityName"]);
 
   const [rows, totalRes] = await Promise.all([
     querySpk(sql, params),
@@ -788,6 +803,8 @@ module.exports = {
   replaceGroupComparisons,
   updateGroupWeights,
   updateHasilAkhirStatus,
+  getLastLoginByEmail,
+  updateLastLogin,
   queryMitra,
   querySpk
 };

@@ -72,12 +72,15 @@ const { PDFDocument, rgb, StandardFonts } = require("pdf-lib");
 async function logActivity(req, action, entity, details) {
   await insertAuditLog({
     userId: Number(req.user?.sub || 0),
-    username: req.user?.name || "System",
+    email: req.user?.email || "-",
+    name: req.user?.name || "-",
     action,
     entityName: entity,
     details,
     ipAddress: req.ip,
-    userAgent: req.headers["user-agent"] || null
+    userAgent: req.headers["user-agent"] || null,
+    url: req.originalUrl,
+    method: req.method
   });
 }
 
@@ -210,6 +213,8 @@ async function getPeriodeHandler(req, res) {
     } else {
       result = await getPeriodes(options);
     }
+
+    await logActivity(req, "VIEW", "Periode", { total: result.total });
 
     return res.json({
       data: result.rows.map((p) => ({
@@ -409,6 +414,8 @@ async function getKpiHandler(req, res) {
       result = await getKpis(periodeId, options);
     }
 
+    await logActivity(req, "VIEW", "Criterion", { total: result.total });
+
     return res.json({
       data: result.rows.map((k) => ({
         Id: k.Id,
@@ -459,6 +466,8 @@ async function getAttributesHandler(req, res) {
     const options = getQueryOptions(req);
     const { rows, total } = await getAttributes(options);
 
+    await logActivity(req, "VIEW", "Attribute", { total });
+
     return res.json({
       data: rows.map((row) => ({
         id: row.id,
@@ -485,6 +494,7 @@ async function createAttributeHandler(req, res) {
     [nama, simbol]
   );
 
+  await logActivity(req, "CREATE", "Attribute", { Id: result.insertId, nama, simbol });
   return res.json({ success: true, Id: result.insertId, message: "Attribute berhasil disimpan" });
 }
 
@@ -499,6 +509,7 @@ async function deleteAttributeHandler(req, res) {
     return res.status(404).json({ success: false, message: "Attribute tidak ditemukan" });
   }
 
+  await logActivity(req, "DELETE", "Attribute", { Id: id });
   return res.json({ success: true, message: "Attribute berhasil dihapus" });
 }
 
@@ -571,6 +582,9 @@ async function getKpiGroupsHandler(req, res) {
     const { periode_id } = req.query;
     const options = getQueryOptions(req);
     const { rows, total } = await getKpiGroups(periode_id, options);
+
+    await logActivity(req, "VIEW", "KpiGroup", { total });
+
     return res.json({
       data: rows,
       meta: formatMeta(options, total)
@@ -614,6 +628,9 @@ async function getGroupComparisonsHandler(req, res) {
   try {
     const { periode_id } = req.params;
     const data = await getGroupComparisons(periode_id);
+
+    await logActivity(req, "VIEW", "GroupComparisons", { periodeId: Number(periode_id) });
+
     res.json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, message: "Internal Server Error" });
@@ -637,8 +654,10 @@ async function saveGroupComparisonsHandler(req, res) {
     if (groupIds.length > 0) {
       const { weights, cr } = solveAhpMatrix(matrixInput, groupIds);
       await updateGroupWeights(periode_id, weights);
+      await logActivity(req, "CREATE/UPDATE", "GroupComparisons", { periodeId: Number(periode_id), count: comparisons.length, cr });
       res.json({ success: true, cr, weights });
     } else {
+      await logActivity(req, "CREATE/UPDATE", "GroupComparisons", { periodeId: Number(periode_id), count: comparisons.length });
       res.json({ success: true, message: "Comparisons saved but no groups found" });
     }
   } catch (error) {
@@ -805,22 +824,19 @@ async function processMooraPenilaian({ evals, periodeId, user }) {
       throw new Error("Realisasi tidak valid");
     }
 
+    // ✅ Calculate achievement (boleh 0 untuk realisasi=0)
     const achievement = calculateAchievement({
       target: Number(kpi.Target),
       realisasi,
       tipe: kpi.Tipe
     });
 
-    if (!achievement.valid) {
-      throw new Error(achievement.message);
-    }
-
     normalized.push({
       KaryawanId: Number(item.KaryawanId),
       KpiId: Number(item.KpiId),
       PeriodeId: Number(periodeId),
       Realisasi: realisasi,
-      Achievement: achievement.achievement,
+      Achievement: achievement.achievement, // ✅ 0 = valid, insert tetap
       CreatedBy: Number(user?.sub || 0)
     });
   }
@@ -854,6 +870,8 @@ async function inputPenilaianHandler(req, res) {
 
     // 🔥 BULK INSERT (IMPORTANT)
     await bulkInsertPenilaian(normalized);
+
+    await logActivity(req, "CREATE", "Penilaian", { periodeId, total: normalized.length });
 
     return res.json({
       success: true,
@@ -1119,6 +1137,8 @@ async function getDepartmentsHandler(req, res) {
       total = rows.length;
     }
 
+    await logActivity(req, "VIEW", "Department", { total });
+
     return res.json({
       data: rows.map((d) => ({ id: d.id, name: d.name })),
       meta: formatMeta(options, total)
@@ -1154,6 +1174,8 @@ async function getEmployeesHandler(req, res) {
       filteredRows = filteredRows.filter((u) => classifyRoleGroup(u.role) === roleGroup);
     }
 
+    await logActivity(req, "VIEW", "Employee", { total });
+
     const mapped = await Promise.all(
       filteredRows.map(async (u) => ({
         id: u.id,
@@ -1187,6 +1209,9 @@ async function getWorkLocationsHandler(req, res) {
       status: req.query.status || null,
       ...options
     });
+
+    await logActivity(req, "VIEW", "WorkLocation", { total });
+
     return res.json({
       data: rows.map((w) => ({
         id: w.id,
@@ -1213,13 +1238,15 @@ async function getAuditLogsHandler(req, res) {
       data: result.rows.map((row) => ({
         Id: row.Id,
         UserId: row.UserId,
-        Username: row.Username,
+        Email: row.Email,
+        Name: row.Name,
         Action: row.Action,
         EntityName: row.EntityName,
         Details: row.Details,
         IpAddress: row.IpAddress,
         UserAgent: row.UserAgent,
-        CreatedAt: toIso(row.CreatedAt)
+        CreatedAt: toIso(row.CreatedAt),
+        last_login: row.last_login ? toIso(row.last_login) : null
       })),
       meta: formatMeta(options, result.total)
     });
@@ -1419,6 +1446,7 @@ async function getIndividualReportHandler(req, res) {
     }
 
     // JSON response
+    await logActivity(req, "VIEW", "IndividualReport", { periodeId: Number(periode_id), karyawanId: Number(karyawan_id) });
     return res.json({
       success: true,
       metadata: {
@@ -1504,6 +1532,8 @@ async function getSummaryReportHandler(req, res) {
       row.Ranking = res.Ranking;
       return row;
     });
+
+    await logActivity(req, "VIEW", "SummaryReport", { periodeId, format });
 
     if (format === "excel") {
       const workbook = new ExcelJS.Workbook();
