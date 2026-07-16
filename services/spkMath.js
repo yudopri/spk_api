@@ -84,6 +84,12 @@ function calculateAchievement({ target, realisasi, tipe }) {
     return { achievement: 0, valid: false, message: "Target KPI tidak valid" };
   }
 
+  // Cost type: realisasi=0 berarti tidak ada insiden/keluhan (kondisi terbaik)
+  // Hindari division by zero → kembalikan angka besar (bukan Infinity)
+  if (normalizedType === "cost" && realisasiValue === 0) {
+    return { achievement: Number.MAX_SAFE_INTEGER, valid: true, message: null };
+  }
+
   const achievement =
     normalizedType === "cost"
       ? (targetValue / realisasiValue) * 100
@@ -91,7 +97,7 @@ function calculateAchievement({ target, realisasi, tipe }) {
 
   return {
     achievement: Number.isFinite(achievement) ? achievement : 0,
-    valid: Number.isFinite(achievement), // ✅ Achievement=0 valid (realisasi=0) dan achievement bisa < 0 (cost dengan realisasi > target)
+    valid: Number.isFinite(achievement),
     message: null
   };
 }
