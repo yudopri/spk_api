@@ -143,6 +143,16 @@ function normalizeKpiType(value) {
   return String(value || "benefit").toLowerCase() === "cost" ? "cost" : "benefit";
 }
 
+function getPredikat(achievement) {
+  const val = Number(achievement);
+  if (!Number.isFinite(val)) return "-";
+  if (val >= 110) return "Sangat Baik";
+  if (val >= 90) return "Baik";
+  if (val >= 70) return "Cukup";
+  if (val >= 50) return "Kurang";
+  return "Sangat Kurang";
+}
+
 function buildAssessmentSnapshotRow({ periodeId, employeeId, kpiMeta, realisasi, achievement, rank, yi }) {
   return {
     kpi_id: Number(kpiMeta.Id),
@@ -1275,12 +1285,23 @@ async function getIndividualReportHandler(req, res) {
     const employees = await getEmployeesByIds([Number(karyawan_id)]);
     const employee = employees[0] || null;
 
-    // Build data per KPI with real evaluation values (Realisasi)
+    // Build data per KPI with real evaluation values (Realisasi, Achievement, Predikat)
     const data = kpis.map((k) => {
       const ev = userEvals.find((e) => Number(e.KpiId) === Number(k.Id));
+      const realisasi = ev ? Number(ev.Realisasi) : 0;
+      const achResult = calculateAchievement({
+        target: Number(k.Target),
+        realisasi,
+        tipe: k.Tipe
+      });
+      const achievementVal = achResult.achievement;
       return {
         Kriteria: k.NamaKpi,
-        Realisasi: ev ? ev.Realisasi : 0,
+        Tipe: k.Tipe || "-",
+        Realisasi: realisasi,
+        Achievement: achievementVal,
+        Predikat: getPredikat(achievementVal),
+        PersentaseKeberhasilan: Number.isFinite(achievementVal) ? achievementVal.toFixed(2) + "%" : "-",
         Satuan: k.simbol || "",
         group_id: k.group_id || null,
         nama_grup: k.nama_grup || null,
@@ -1366,8 +1387,12 @@ async function getIndividualReportHandler(req, res) {
       let yPos = { value: height - 155 };
       const tableRight = PAGE_WIDTH - 50;
       const noX = MARGIN_X;
-      const kriteriaX = MARGIN_X + 35;
-      const nilaiX = tableRight - 80;
+      const kriteriaX = MARGIN_X + 30;
+      const tipeX = MARGIN_X + 170;
+      const realisasiX = MARGIN_X + 240;
+      const achvX = MARGIN_X + 310;
+      const predikatX = MARGIN_X + 380;
+      const persenX = tableRight - 50;
       const lineY = -5;
 
       // --- Grouped tables ---
@@ -1388,9 +1413,13 @@ async function getIndividualReportHandler(req, res) {
         yPos.value -= 22;
 
         // Table header
-        page.drawText("No", { x: noX + 5, y: yPos.value, size: 10, font: fontBold });
-        page.drawText("Kriteria", { x: kriteriaX, y: yPos.value, size: 10, font: fontBold });
-        page.drawText("Realisasi", { x: nilaiX, y: yPos.value, size: 10, font: fontBold });
+        page.drawText("No", { x: noX + 5, y: yPos.value, size: 9, font: fontBold });
+        page.drawText("Kriteria", { x: kriteriaX, y: yPos.value, size: 9, font: fontBold });
+        page.drawText("Tipe", { x: tipeX, y: yPos.value, size: 9, font: fontBold });
+        page.drawText("Realisasi", { x: realisasiX, y: yPos.value, size: 9, font: fontBold });
+        page.drawText("Achievement", { x: achvX, y: yPos.value, size: 9, font: fontBold });
+        page.drawText("Predikat", { x: predikatX, y: yPos.value, size: 9, font: fontBold });
+        page.drawText("%", { x: persenX, y: yPos.value, size: 9, font: fontBold });
         page.drawLine({ start: { x: noX, y: yPos.value + lineY }, end: { x: tableRight, y: yPos.value + lineY }, thickness: 1 });
         yPos.value -= 18;
 
@@ -1400,12 +1429,20 @@ async function getIndividualReportHandler(req, res) {
           page = ensureSpace(page, yPos, 15);
 
           const kriteriaStr = String(item.Kriteria || "");
+          const tipeStr = String(item.Tipe || "-");
           const realisasiStr = String(item.Realisasi ?? 0);
+          const achvStr = typeof item.Achievement === "number" ? item.Achievement.toFixed(2) : "0";
+          const predikatStr = String(item.Predikat || "-");
+          const persenStr = String(item.PersentaseKeberhasilan || "-");
           const satuanStr = String(item.Satuan || "");
 
-          page.drawText(`${globalIdx}`, { x: noX + 12, y: yPos.value, size: 10, font });
-          page.drawText(kriteriaStr, { x: kriteriaX, y: yPos.value, size: 10, font });
-          page.drawText(`${realisasiStr} ${satuanStr}`.trim(), { x: nilaiX, y: yPos.value, size: 10, font });
+          page.drawText(`${globalIdx}`, { x: noX + 12, y: yPos.value, size: 9, font });
+          page.drawText(kriteriaStr, { x: kriteriaX, y: yPos.value, size: 9, font });
+          page.drawText(tipeStr, { x: tipeX, y: yPos.value, size: 9, font });
+          page.drawText(`${realisasiStr} ${satuanStr}`.trim(), { x: realisasiX, y: yPos.value, size: 9, font });
+          page.drawText(achvStr, { x: achvX, y: yPos.value, size: 9, font });
+          page.drawText(predikatStr, { x: predikatX, y: yPos.value, size: 9, font });
+          page.drawText(persenStr, { x: persenX, y: yPos.value, size: 9, font });
           yPos.value -= 18;
         }
 
@@ -1460,7 +1497,11 @@ async function getIndividualReportHandler(req, res) {
           No: flatIdx,
           Group: groupMap.get(gid).name,
           Kriteria: item.Kriteria,
+          Tipe: item.Tipe,
           Realisasi: item.Realisasi,
+          Achievement: item.Achievement,
+          Predikat: item.Predikat,
+          PersentaseKeberhasilan: item.PersentaseKeberhasilan,
           Satuan: item.Satuan,
           Target: item.Target
         });
@@ -1470,7 +1511,7 @@ async function getIndividualReportHandler(req, res) {
     return res.json({
       success: true,
       title: `Laporan Individual - ${employee?.name || "N/A"} - ${periode?.NamaPeriode || ""} ${periode?.Tahun || ""}`,
-      columns: ["No", "Group", "Kriteria", "Realisasi", "Satuan", "Target"],
+      columns: ["No", "Group", "Kriteria", "Tipe", "Realisasi", "Achievement", "Predikat", "PersentaseKeberhasilan", "Satuan", "Target"],
       data: flatData,
       metadata: {
         Nama: employee?.name || "N/A",
