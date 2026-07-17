@@ -1449,8 +1449,29 @@ async function getIndividualReportHandler(req, res) {
 
     // JSON response
     await logActivity(req, "VIEW", "IndividualReport", { periodeId: Number(periode_id), karyawanId: Number(karyawan_id) });
+
+    // Flatten grouped items into a flat data array (same pattern as summary report)
+    let flatIdx = 0;
+    const flatData = [];
+    for (const gid of groupOrder) {
+      for (const item of groupMap.get(gid).items) {
+        flatIdx++;
+        flatData.push({
+          No: flatIdx,
+          Group: groupMap.get(gid).name,
+          Kriteria: item.Kriteria,
+          Realisasi: item.Realisasi,
+          Satuan: item.Satuan,
+          Target: item.Target
+        });
+      }
+    }
+
     return res.json({
       success: true,
+      title: `Laporan Individual - ${employee?.name || "N/A"} - ${periode?.NamaPeriode || ""} ${periode?.Tahun || ""}`,
+      columns: ["No", "Group", "Kriteria", "Realisasi", "Satuan", "Target"],
+      data: flatData,
       metadata: {
         Nama: employee?.name || "N/A",
         NIK: employee?.nik || "N/A",
@@ -1460,10 +1481,6 @@ async function getIndividualReportHandler(req, res) {
         DisetujuiOleh: approvedByInfo ? `${approvedByInfo.name} (${approvedByInfo.jabatan || "Pimpinan"})` : "N/A",
         Status: result?.status || "Draft"
       },
-      rincian: groupOrder.map((gid) => ({
-        group_name: groupMap.get(gid).name,
-        items: groupMap.get(gid).items
-      })),
       kesimpulan: result
         ? {
             Ranking: result.Ranking,
