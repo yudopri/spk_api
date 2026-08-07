@@ -1479,9 +1479,12 @@ async function getIndividualReportHandler(req, res) {
       page.drawText(approverJabatan, { x: 380, y: yPos.value - 15, size: 10, font });
 
       const pdfBytes = await pdfDoc.save();
+      const pdfBuf = Buffer.from(pdfBytes);
+      const pdfFileName = `Report_${(employee?.name || "User").replace(/[^a-zA-Z0-9 _-]/g, "_")}.pdf`;
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="Report_${employee?.name || "User"}.pdf"`);
-      return res.end(Buffer.from(pdfBytes));
+      res.setHeader("Content-Length", pdfBuf.length);
+      res.setHeader("Content-Disposition", `attachment; filename="${pdfFileName}"; filename*=UTF-8''${encodeURIComponent(pdfFileName)}`);
+      return res.end(pdfBuf);
     }
 
     // JSON response
@@ -1725,11 +1728,13 @@ async function getSummaryReportHandler(req, res) {
       worksheet.getColumn(skorCol).width = 12;
       worksheet.getColumn(rankingCol).width = 10;
 
+      const xlsxBuffer = await workbook.xlsx.writeBuffer();
+      const xlsxBuf = Buffer.from(xlsxBuffer);
+      const xlsxFileName = `Rekap_${(periode?.NamaPeriode || "Periode").replace(/[^a-zA-Z0-9 _-]/g, "_")}.xlsx`;
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-      res.setHeader("Content-Disposition", `attachment; filename="Rekap_${periode?.NamaPeriode || "Periode"}.xlsx"`);
-
-      await workbook.xlsx.write(res);
-      return res.end();
+      res.setHeader("Content-Length", xlsxBuf.length);
+      res.setHeader("Content-Disposition", `attachment; filename="${xlsxFileName}"; filename*=UTF-8''${encodeURIComponent(xlsxFileName)}`);
+      return res.end(xlsxBuf);
     }
 
     return res.json({

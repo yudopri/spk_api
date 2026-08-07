@@ -85,9 +85,9 @@ function calculateAchievement({ target, realisasi, tipe }) {
   }
 
   // Cost type: realisasi=0 berarti tidak ada insiden/keluhan (kondisi terbaik)
-  // Hindari division by zero → kembalikan angka besar (bukan Infinity)
+  // Cap di 200% (double dari target) agar tidak mendistorsi skor MOORA
   if (normalizedType === "cost" && realisasiValue === 0) {
-    return { achievement: Number.MAX_SAFE_INTEGER, valid: true, message: null };
+    return { achievement: 200, valid: true, message: null };
   }
 
   const achievement =
@@ -175,8 +175,9 @@ function scoreMooraChunk(evaluations, coeffMap) {
     const baseValue = Number(ev.Achievement ?? ev.achievement ?? ev.Nilai ?? ev.Realisasi ?? 0);
     const normalized = baseValue / (coeff.denominator || 1);
     const weighted = normalized * (coeff.weight || 0);
-    const signedWeighted = coeff.jenis === "cost" ? -weighted : weighted;
-    yiByEmployee[ev.KaryawanId] = current + signedWeighted;
+    // Achievement cost sudah di-invert (target/realisasi), jadi higher = better.
+    // Tidak perlu negasi lagi — semua terms dijumlahkan ke Y_i.
+    yiByEmployee[ev.KaryawanId] = current + weighted;
     if (!detailByEmployee[ev.KaryawanId]) detailByEmployee[ev.KaryawanId] = [];
     detailByEmployee[ev.KaryawanId].push({
       KpiId: ev.KpiId,

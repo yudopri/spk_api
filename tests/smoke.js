@@ -33,11 +33,12 @@ function runMooraTest() {
   const denominatorMap = { 1: 10, 2: 10 };
   const coeffMap = buildMooraCoeffMap(kpis, denominatorMap);
 
+  // Achievement values: benefit = realisasi/target, cost = target/realisasi (sudah di-invert)
   const chunk = [
-    { KaryawanId: 101, KpiId: 1, Nilai: 8 },
-    { KaryawanId: 101, KpiId: 2, Nilai: 3 },
-    { KaryawanId: 102, KpiId: 1, Nilai: 6 },
-    { KaryawanId: 102, KpiId: 2, Nilai: 5 }
+    { KaryawanId: 101, KpiId: 1, Achievement: 8 },
+    { KaryawanId: 101, KpiId: 2, Achievement: 8 },
+    { KaryawanId: 102, KpiId: 1, Achievement: 6 },
+    { KaryawanId: 102, KpiId: 2, Achievement: 5 }
   ];
 
   const { yiByEmployee } = scoreMooraChunk(chunk, coeffMap);
