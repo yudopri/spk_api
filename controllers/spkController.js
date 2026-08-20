@@ -1661,7 +1661,14 @@ async function getSummaryReportHandler(req, res) {
     const kpisMeta = await getKpis(periodeId);
     const resultsMeta = await getHasilAkhirByPeriode(periodeId);
     const kpis = kpisMeta.rows;
-    const results = resultsMeta.rows;
+    const results = [...resultsMeta.rows].sort((a, b) => {
+      const rankA = Number(a?.Ranking);
+      const rankB = Number(b?.Ranking);
+      const safeRankA = Number.isFinite(rankA) ? rankA : Number.MAX_SAFE_INTEGER;
+      const safeRankB = Number.isFinite(rankB) ? rankB : Number.MAX_SAFE_INTEGER;
+      if (safeRankA !== safeRankB) return safeRankA - safeRankB;
+      return Number(a?.Id || 0) - Number(b?.Id || 0);
+    });
     const evaluations = await getEvaluationsByPeriode(periodeId);
 
     const employeeIds = results.map((r) => Number(r.KaryawanId));
