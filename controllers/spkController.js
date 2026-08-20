@@ -122,15 +122,15 @@ function getQueryOptions(req) {
   return {
     search: req.query.search,
     filter: req.query.filter,
-    page: req.query.page,
-    pageSize: req.query.pageSize ?? req.query.limit, // handle both pageSize and limit
+    page: req.query.page ?? 1,
+    pageSize: req.query.pageSize ?? req.query.limit ?? 10, // handle both pageSize and limit
     sort: req.query.sort
   };
 }
 
 function formatMeta(options, total) {
-  const page = parseInt(options.page || 1);
-  const pageSize = parseInt(options.pageSize || total || 1);
+  const page = Math.max(1, parseInt(options.page || 1, 10) || 1);
+  const pageSize = Math.max(1, parseInt(options.pageSize || 10, 10) || 10);
   return {
     total,
     page,
@@ -1100,36 +1100,69 @@ async function getMooraResultHandler(req, res) {
     const allResults = await getHasilAkhirByPeriode(periodeId);
     const allEmployeeIds = [...new Set(allResults.rows.map((row) => Number(row.KaryawanId)))];
 
-    // 2. If search/filter involves employee fields (name, nik, lokasi_kerja, departemen_id),
+    // 2. If filter involves employee fields (name, nik, lokasi_kerja, departemen_id),
     //    resolve matching employee IDs from Mitra DB first
     let filteredEmployeeIds = null;
-    const search = req.query.search;
     const filter = req.query.filter;
     const lokasiKerja = req.query.lokasi_kerja;
 
-    const hasEmployeeSearch = search && String(search).trim() !== "";
     let filterObj = null;
     if (filter) {
       try {
         filterObj = typeof filter === "string" ? JSON.parse(filter) : filter;
       } catch (_) { filterObj = null; }
     }
-    const hasEmployeeFilter = filterObj && (
-      filterObj.lokasi_kerja || filterObj.lokasikerja ||
-      filterObj.departemen_id || filterObj.name || filterObj.nik
+
+    const employeeFilterKeys = new Set([
+      "lokasi_kerja",
+      "lokasikerja",
+      "departemen_id",
+      "department_id",
+      "name",
+      "nik",
+      "email",
+      "id"
+    ]);
+
+    const hasEmployeeFilter = Boolean(
+      filterObj &&
+      Object.keys(filterObj).some((key) => {
+        if (!employeeFilterKeys.has(key)) return false;
+        const val = filterObj[key];
+        return val !== undefined && val !== null && val !== "";
+      })
     );
 
-    if (hasEmployeeSearch || hasEmployeeFilter || lokasiKerja) {
+    if (hasEmployeeFilter || lokasiKerja) {
       // Query Mitra DB to find matching employee IDs
       const empOptions = { pageSize: 100000 };
-      if (hasEmployeeSearch) empOptions.search = search;
+
       if (hasEmployeeFilter) {
         const empFilter = {};
-        if (filterObj.lokasi_kerja) empFilter["e.lokasikerja"] = filterObj.lokasi_kerja;
-        if (filterObj.lokasikerja) empFilter["e.lokasikerja"] = filterObj.lokasikerja;
-        if (filterObj.departemen_id) empFilter["e.departemen_id"] = filterObj.departemen_id;
-        if (filterObj.name) empFilter["e.name"] = filterObj.name;
-        if (filterObj.nik) empFilter["e.nik_ktp"] = filterObj.nik;
+        if (filterObj.lokasi_kerja !== undefined && filterObj.lokasi_kerja !== null && filterObj.lokasi_kerja !== "") {
+          empFilter["e.lokasikerja"] = filterObj.lokasi_kerja;
+        }
+        if (filterObj.lokasikerja !== undefined && filterObj.lokasikerja !== null && filterObj.lokasikerja !== "") {
+          empFilter["e.lokasikerja"] = filterObj.lokasikerja;
+        }
+        if (filterObj.departemen_id !== undefined && filterObj.departemen_id !== null && filterObj.departemen_id !== "") {
+          empFilter["e.departemen_id"] = filterObj.departemen_id;
+        }
+        if (filterObj.department_id !== undefined && filterObj.department_id !== null && filterObj.department_id !== "") {
+          empFilter["e.departemen_id"] = filterObj.department_id;
+        }
+        if (filterObj.name !== undefined && filterObj.name !== null && filterObj.name !== "") {
+          empFilter["e.name"] = filterObj.name;
+        }
+        if (filterObj.nik !== undefined && filterObj.nik !== null && filterObj.nik !== "") {
+          empFilter["e.nik_ktp"] = filterObj.nik;
+        }
+        if (filterObj.email !== undefined && filterObj.email !== null && filterObj.email !== "") {
+          empFilter["e.email"] = filterObj.email;
+        }
+        if (filterObj.id !== undefined && filterObj.id !== null && filterObj.id !== "") {
+          empFilter["e.id"] = filterObj.id;
+        }
         empOptions.filter = JSON.stringify(empFilter);
       }
       if (lokasiKerja) {
@@ -1145,18 +1178,17 @@ async function getMooraResultHandler(req, res) {
 
     // 3. Build clean options for hasil_akhir query - strip employee-related fields
     const cleanOptions = { ...options };
-    if (hasEmployeeSearch) {
-      // Search is handled via employee lookup, don't pass to hasil_akhir
-      delete cleanOptions.search;
-    }
     if (hasEmployeeFilter) {
       // Remove employee-related filter keys that don't exist on hasil_akhir table
       const cleanFilter = { ...filterObj };
       delete cleanFilter.lokasi_kerja;
       delete cleanFilter.lokasikerja;
       delete cleanFilter.departemen_id;
+      delete cleanFilter.department_id;
       delete cleanFilter.name;
       delete cleanFilter.nik;
+      delete cleanFilter.email;
+      delete cleanFilter.id;
       cleanOptions.filter = Object.keys(cleanFilter).length > 0 ? JSON.stringify(cleanFilter) : undefined;
     }
 

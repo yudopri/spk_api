@@ -119,9 +119,11 @@ function applyQueryMeta(baseSql, baseParams, options = {}, searchColumns = []) {
   }
 
   // 4. Pagination
-  if (page && pageSize) {
-    const p = Math.max(1, parseInt(page));
-    const ps = Math.max(1, parseInt(pageSize));
+  const hasPage = page !== undefined && page !== null && page !== "";
+  const hasPageSize = pageSize !== undefined && pageSize !== null && pageSize !== "";
+  if (hasPage || hasPageSize) {
+    const p = Math.max(1, parseInt(hasPage ? page : 1, 10) || 1);
+    const ps = Math.max(1, parseInt(hasPageSize ? pageSize : 10, 10) || 10);
     sql += ` LIMIT ? OFFSET ?`;
     params.push(ps, (p - 1) * ps);
   }
