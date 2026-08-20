@@ -655,6 +655,22 @@ async function saveGroupComparisonsHandler(req, res) {
     const { periode_id } = req.params;
     const { comparisons } = req.body; // [{group_a_id, group_b_id, nilai}]
 
+    if (!Array.isArray(comparisons) || comparisons.length === 0) {
+      return res.status(400).json({ success: false, message: "Data perbandingan grup tidak valid atau kosong" });
+    }
+
+    const invalidItem = comparisons.find((c) =>
+      !Number.isFinite(Number(c.group_a_id)) ||
+      !Number.isFinite(Number(c.group_b_id)) ||
+      !Number.isFinite(Number(c.nilai)) ||
+      Number(c.group_a_id) <= 0 ||
+      Number(c.group_b_id) <= 0 ||
+      Number(c.nilai) <= 0
+    );
+    if (invalidItem) {
+      return res.status(400).json({ success: false, message: "Isi perbandingan grup tidak valid" });
+    }
+
     // 1. Save raw comparisons
     await replaceGroupComparisons(periode_id, comparisons.map(c => ({ ...c, periode_id })));
 
@@ -674,6 +690,7 @@ async function saveGroupComparisonsHandler(req, res) {
       res.json({ success: true, message: "Comparisons saved but no groups found" });
     }
   } catch (error) {
+    console.error("saveGroupComparisonsHandler error:", error);
     res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
