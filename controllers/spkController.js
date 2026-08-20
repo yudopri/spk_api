@@ -123,7 +123,7 @@ function getQueryOptions(req) {
     search: req.query.search,
     filter: req.query.filter,
     page: req.query.page,
-    pageSize: req.query.pageSize, // handle both pageSize and limit
+    pageSize: req.query.pageSize ?? req.query.limit, // handle both pageSize and limit
     sort: req.query.sort
   };
 }
@@ -1089,61 +1089,122 @@ async function calculateMooraHandler(req, res) {
 async function getMooraResultHandler(req, res) {
   try {
     const periodeId = Number(req.params.periode_id);
-  const periode = await getPeriodeById(periodeId);
-  if (!canAccessPeriodeForUser(req.user, periode)) {
-    return res.status(403).json({ success: false, message: "Tidak boleh melihat hasil lintas divisi" });
-  }
-
-  const options = getQueryOptions(req);
-  const { rows, total } = await getHasilAkhirByPeriode(periodeId, options);
-  const employeeIds = [...new Set(rows.map((row) => row.KaryawanId))];
-  const employees = await getEmployeesByIds(employeeIds);
-  const employeeMap = new Map(employees.map((emp) => [Number(emp.id), emp]));
-
-  let data = await Promise.all(rows.map(async (row) => {
-    const employee = employeeMap.get(Number(row.KaryawanId));
-    const decryptedNik = employee ? await decryptNikValue(employee.nik) : null;
-
-    // Parse catatan JSON and handle legacy text
-    let parsedCatatan = { p: "", i: "", s: "" };
-    try {
-      if (row.catatan && row.catatan.startsWith("{")) {
-        parsedCatatan = JSON.parse(row.catatan);
-      } else if (row.catatan) {
-        parsedCatatan.p = row.catatan;
-      }
-    } catch (e) {
-      parsedCatatan.p = row.catatan || "";
+    const periode = await getPeriodeById(periodeId);
+    if (!canAccessPeriodeForUser(req.user, periode)) {
+      return res.status(403).json({ success: false, message: "Tidak boleh melihat hasil lintas divisi" });
     }
 
-    return {
-      Id: row.Id,
-      KaryawanId: row.KaryawanId,
-      PeriodeId: row.PeriodeId,
-      NilaiOptimasi: row.NilaiOptimasi,
-      NilaiSkala: row.NilaiSkala,
-      Ranking: row.Ranking,
-      status: row.status,
-      catatan: parsedCatatan,
-      Karyawan: employee
-        ? {
-            id: employee.id,
-            name: employee.name,
-            email: employee.email,
-            nik: decryptedNik,
-            departemen_id: employee.departemen_id,
-            lokasi_kerja: employee.lokasikerja || null
-          }
-        : null
-    };
-  }));
+    const options = getQueryOptions(req);
 
-  if (req.query.lokasi_kerja) {
-    const lokasiKerja = String(req.query.lokasi_kerja);
-    data = data.filter((row) => String(row.Karyawan?.lokasi_kerja || "") === lokasiKerja);
-  }
+    // 1. Get all employee IDs for this periode from hasil_akhir
+    const allResults = await getHasilAkhirByPeriode(periodeId);
+    const allEmployeeIds = [...new Set(allResults.rows.map((row) => Number(row.KaryawanId)))];
 
-  await logActivity(req, "VIEW", "MooraResult", { PeriodeId: periodeId, Count: data.length });
+    // 2. If search/filter involves employee fields (name, nik, lokasi_kerja, departemen_id),
+    //    resolve matching employee IDs from Mitra DB first
+    let filteredEmployeeIds = null;
+    const search = req.query.search;
+    const filter = req.query.filter;
+    const lokasiKerja = req.query.lokasi_kerja;
+
+    const hasEmployeeSearch = search && String(search).trim() !== "";
+    let filterObj = null;
+    if (filter) {
+      try {
+        filterObj = typeof filter === "string" ? JSON.parse(filter) : filter;
+      } catch (_) { filterObj = null; }
+    }
+    const hasEmployeeFilter = filterObj && (
+      filterObj.lokasi_kerja || filterObj.lokasikerja ||
+      filterObj.departemen_id || filterObj.name || filterObj.nik
+    );
+
+    if (hasEmployeeSearch || hasEmployeeFilter || lokasiKerja) {
+      // Query Mitra DB to find matching employee IDs
+      const empOptions = { pageSize: 100000 };
+      if (hasEmployeeSearch) empOptions.search = search;
+      if (hasEmployeeFilter) {
+        const empFilter = {};
+        if (filterObj.lokasi_kerja) empFilter["e.lokasikerja"] = filterObj.lokasi_kerja;
+        if (filterObj.lokasikerja) empFilter["e.lokasikerja"] = filterObj.lokasikerja;
+        if (filterObj.departemen_id) empFilter["e.departemen_id"] = filterObj.departemen_id;
+        if (filterObj.name) empFilter["e.name"] = filterObj.name;
+        if (filterObj.nik) empFilter["e.nik_ktp"] = filterObj.nik;
+        empOptions.filter = JSON.stringify(empFilter);
+      }
+      if (lokasiKerja) {
+        empOptions.filter = empOptions.filter
+          ? JSON.stringify({ ...JSON.parse(empOptions.filter), "e.lokasikerja": lokasiKerja })
+          : JSON.stringify({ "e.lokasikerja": lokasiKerja });
+      }
+
+      const empResult = await getEmployees(empOptions);
+      const matchedIds = new Set(empResult.rows.map((e) => Number(e.id)));
+      filteredEmployeeIds = allEmployeeIds.filter((id) => matchedIds.has(id));
+    }
+
+    // 3. Build clean options for hasil_akhir query - strip employee-related fields
+    const cleanOptions = { ...options };
+    if (hasEmployeeSearch) {
+      // Search is handled via employee lookup, don't pass to hasil_akhir
+      delete cleanOptions.search;
+    }
+    if (hasEmployeeFilter) {
+      // Remove employee-related filter keys that don't exist on hasil_akhir table
+      const cleanFilter = { ...filterObj };
+      delete cleanFilter.lokasi_kerja;
+      delete cleanFilter.lokasikerja;
+      delete cleanFilter.departemen_id;
+      delete cleanFilter.name;
+      delete cleanFilter.nik;
+      cleanOptions.filter = Object.keys(cleanFilter).length > 0 ? JSON.stringify(cleanFilter) : undefined;
+    }
+
+    // 4. Query hasil_akhir with employee ID restriction (if any) + pagination
+    const { rows, total } = await getHasilAkhirByPeriode(periodeId, cleanOptions, filteredEmployeeIds);
+    const employeeIds = [...new Set(rows.map((row) => row.KaryawanId))];
+    const employees = await getEmployeesByIds(employeeIds);
+    const employeeMap = new Map(employees.map((emp) => [Number(emp.id), emp]));
+
+    const data = await Promise.all(rows.map(async (row) => {
+      const employee = employeeMap.get(Number(row.KaryawanId));
+      const decryptedNik = employee ? await decryptNikValue(employee.nik) : null;
+
+      // Parse catatan JSON and handle legacy text
+      let parsedCatatan = { p: "", i: "", s: "" };
+      try {
+        if (row.catatan && row.catatan.startsWith("{")) {
+          parsedCatatan = JSON.parse(row.catatan);
+        } else if (row.catatan) {
+          parsedCatatan.p = row.catatan;
+        }
+      } catch (e) {
+        parsedCatatan.p = row.catatan || "";
+      }
+
+      return {
+        Id: row.Id,
+        KaryawanId: row.KaryawanId,
+        PeriodeId: row.PeriodeId,
+        NilaiOptimasi: row.NilaiOptimasi,
+        NilaiSkala: row.NilaiSkala,
+        Ranking: row.Ranking,
+        status: row.status,
+        catatan: parsedCatatan,
+        Karyawan: employee
+          ? {
+              id: employee.id,
+              name: employee.name,
+              email: employee.email,
+              nik: decryptedNik,
+              departemen_id: employee.departemen_id,
+              lokasi_kerja: employee.lokasikerja || null
+            }
+          : null
+      };
+    }));
+
+    await logActivity(req, "VIEW", "MooraResult", { PeriodeId: periodeId, Count: data.length });
     return res.json({ success: true, data, meta: formatMeta(options, total) });
   } catch (error) {
     return res.status(500).json({ success: false, message: "Internal Server Error" });

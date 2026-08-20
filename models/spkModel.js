@@ -534,12 +534,23 @@ async function validateAssessmentCompleteness(periodeId) {
   return rows;
 }
 
-async function getHasilAkhirByPeriode(periodeId, options = {}) {
-  const baseSql = `SELECT h.Id, h.KaryawanId, h.PeriodeId, h.NilaiOptimasi, h.NilaiSkala, h.Ranking, h.created_by, h.approved_by, h.status, h.catatan
+async function getHasilAkhirByPeriode(periodeId, options = {}, employeeIds = null) {
+  let baseSql = `SELECT h.Id, h.KaryawanId, h.PeriodeId, h.NilaiOptimasi, h.NilaiSkala, h.Ranking, h.created_by, h.approved_by, h.status, h.catatan
      FROM hasil_akhir h
      WHERE h.PeriodeId = ?`;
-  
-  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, [periodeId], options, ["status"]);
+  const baseParams = [periodeId];
+
+  if (employeeIds !== null) {
+    if (employeeIds.length === 0) {
+      // No matching employees - return empty result
+      return { rows: [], total: 0 };
+    }
+    const placeholders = employeeIds.map(() => "?").join(",");
+    baseSql += ` AND h.KaryawanId IN (${placeholders})`;
+    baseParams.push(...employeeIds);
+  }
+
+  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, baseParams, options, ["status"]);
   const [rows, totalRes] = await Promise.all([
     querySpk(sql, params),
     querySpk(countSql, countParams)
