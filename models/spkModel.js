@@ -550,7 +550,12 @@ async function getHasilAkhirByPeriode(periodeId, options = {}, employeeIds = nul
     baseParams.push(...employeeIds);
   }
 
-  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, baseParams, options, ["status"]);
+  const normalizedOptions = { ...options };
+  if (!String(normalizedOptions.sort || "").trim()) {
+    normalizedOptions.sort = "h.Ranking:asc,h.Id:asc";
+  }
+
+  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, baseParams, normalizedOptions, ["status"]);
   const [rows, totalRes] = await Promise.all([
     querySpk(sql, params),
     querySpk(countSql, countParams)
