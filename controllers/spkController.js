@@ -1094,8 +1094,7 @@ async function getMooraResultHandler(req, res) {
     return res.status(403).json({ success: false, message: "Tidak boleh melihat hasil lintas divisi" });
   }
 
-  const options = getQueryOptions(req);
-  const { rows, total } = await getHasilAkhirByPeriode(periodeId, options);
+  const { rows, total } = await getHasilAkhirByPeriode(periodeId);
   const employeeIds = [...new Set(rows.map((row) => row.KaryawanId))];
   const employees = await getEmployeesByIds(employeeIds);
   const employeeMap = new Map(employees.map((emp) => [Number(emp.id), emp]));
@@ -1138,18 +1137,8 @@ async function getMooraResultHandler(req, res) {
     };
   }));
 
-  if (canOnlyViewOwnDivision(req.user?.role) || canOnlyViewSelfEmployee(req.user?.role)) {
-    const deptId = Number(req.user?.dept_id || 0);
-    data = data.filter((row) => Number(row.Karyawan?.departemen_id || 0) === deptId);
-  }
-
-  if (req.query.lokasi_kerja) {
-    const lokasiKerja = String(req.query.lokasi_kerja);
-    data = data.filter((row) => String(row.Karyawan?.lokasi_kerja || "") === lokasiKerja);
-  }
-
   await logActivity(req, "VIEW", "MooraResult", { PeriodeId: periodeId, Count: data.length });
-    return res.json({ success: true, data, meta: formatMeta(options, total) });
+    return res.json({ success: true, data, meta: formatMeta({}, total) });
   } catch (error) {
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
