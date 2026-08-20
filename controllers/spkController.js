@@ -1194,7 +1194,7 @@ async function getEmployeesHandler(req, res) {
       filteredRows = filteredRows.filter((u) => Number(u.id) === actorEmployeeId);
     }
 
-    const includeManagementRoles = String(req.query.include_management_roles || "false").toLowerCase() === "true";
+    const includeManagementRoles = String(req.query.include_management_roles || "true").toLowerCase() === "true";
     if (!includeManagementRoles) {
       filteredRows = filteredRows.filter((u) => classifyRoleGroup(u.role) !== "management");
     }
