@@ -154,14 +154,17 @@ function getPredikat(achievement) {
 }
 
 function buildAssessmentSnapshotRow({ periodeId, employeeId, kpiMeta, realisasi, achievement, rank, yi }) {
+  const localWeight = Number(kpiMeta.BobotAhp || 0);
+  const groupWeight = kpiMeta.group_id ? Number(kpiMeta.bobot_grup || 0) : 1;
   return {
     kpi_id: Number(kpiMeta.Id),
     nama_kpi: kpiMeta.NamaKpi,
     target: Number(kpiMeta.Target || 0),
     realisasi: Number(realisasi || 0),
     achievement: Number(achievement || 0),
-    weight_ahp: Number(kpiMeta.BobotAhp || 0),
+    weight_ahp: localWeight,
     weight_group: Number(kpiMeta.bobot_grup || 0),
+    weight_global: localWeight * groupWeight,
     jenis: normalizeKpiType(kpiMeta.Tipe),
     periode_id: Number(periodeId),
     karyawan_id: Number(employeeId),
@@ -986,7 +989,7 @@ async function calculateMooraHandler(req, res) {
     const groupRows = await getKpiGroups(periodeId);
     const groupWeightMap = {};
     groupRows.rows.forEach((g) => {
-      groupWeightMap[g.id] = Number(g.bobot_grup ?? 1);
+      groupWeightMap[g.id] = Number(g.bobot_grup ?? 0);
     });
 
     const denominatorRows = await querySpk(
@@ -1039,7 +1042,7 @@ async function calculateMooraHandler(req, res) {
           jenis: String(kpi.Tipe || "").toLowerCase(),
           target: Number(kpi.Target || 0),
           bobot_ahp: Number(kpi.BobotAhp || 0),
-          bobot_grup: Number(kpi.bobot_grup || 1),
+          bobot_grup: Number(kpi.bobot_grup || 0),
           group_id: kpi.group_id || null,
           group_name: kpi.nama_grup || null,
           satuan: kpi.simbol || kpi.nama_satuan || null

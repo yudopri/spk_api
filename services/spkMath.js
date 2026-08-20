@@ -152,12 +152,14 @@ function buildMooraCoeffMap(kpis, denominatorMap, groupWeightMap = {}) {
   for (const kpi of kpis) {
     const denominator = denominatorMap[kpi.Id] || 1;
     const kpiWeight = Number(kpi.BobotAhp || 0);
-    const groupWeight = Number(groupWeightMap[kpi.group_id] || 1);
+    const hasGroup = kpi.group_id !== null && kpi.group_id !== undefined;
+    const groupWeight = hasGroup ? Number(groupWeightMap[kpi.group_id] || 0) : 1;
     const combinedWeight = kpiWeight * groupWeight;
     coeff[kpi.Id] = {
       weight: combinedWeight,
       kpiWeight,
       groupWeight,
+      globalWeight: combinedWeight,
       denominator: denominator || 1,
       jenis: String(kpi.Tipe || "benefit").toLowerCase() === "benefit" ? "benefit" : "cost"
     };

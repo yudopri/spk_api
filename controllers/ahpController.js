@@ -1,5 +1,5 @@
 const { querySpk } = require("../config/db");
-const { getKpis, getEvaluationsByPeriode, getEmployeesByIds } = require("../models/spkModel");
+const { getKpis, getEvaluationsByPeriode, getEmployeesByIds, getKpiGroups } = require("../models/spkModel");
 const { calculateAHP, validatePairwiseComparisons, buildMooraCoeffMap, scoreMooraChunk } = require("../services/spkMath");
 
 async function calculateAhpLive(req, res) {
@@ -121,7 +121,13 @@ async function getRankingByPeriod(req, res) {
       denominatorMap[row.KpiId] = Number(row.denominator) || 1;
     });
 
-    const coeffMap = buildMooraCoeffMap(kpis, denominatorMap);
+    const groupRows = await getKpiGroups(periodeId);
+    const groupWeightMap = {};
+    groupRows.rows.forEach((g) => {
+      groupWeightMap[g.id] = Number(g.bobot_grup ?? 0);
+    });
+
+    const coeffMap = buildMooraCoeffMap(kpis, denominatorMap, groupWeightMap);
     const partial = scoreMooraChunk(rows, coeffMap);
 
     const employees = await getEmployeesByIds(employeeIds);
