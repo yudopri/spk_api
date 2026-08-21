@@ -1302,7 +1302,7 @@ async function getEmployeesHandler(req, res) {
       fetchOptions.page = 1;
     }
 
-    const { rows } = await getEmployees({
+    const { rows, total: dbTotal } = await getEmployees({
       deptId: req.query.dept_id || null,
       lokasiKerja: req.query.lokasi_kerja || null,
       ...fetchOptions
@@ -1336,7 +1336,10 @@ async function getEmployeesHandler(req, res) {
     }
 
     // Pagination in-memory (karena sudah difilter in-memory)
-    const total = filteredRows.length;
+    // total = jumlah keseluruhan data. Bila tidak ada search, gunakan total dari
+    // DB (sudah memperhitungkan dept/lokasi). Bila ada search, hitung dari hasil
+    // filter in-memory agar total menyertakan pencarian.
+    const total = search ? filteredRows.length : dbTotal;
     const page = Math.max(1, parseInt(options.page || 1, 10) || 1);
     const pageSize = Math.max(1, parseInt(options.pageSize || 10, 10) || 10);
     const start = (page - 1) * pageSize;
