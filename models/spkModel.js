@@ -655,7 +655,10 @@ async function getEmployees({ deptId, lokasiKerja, ...options }) {
     baseParams.push(lokasiKerja);
   }
 
-  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, baseParams, options, ["e.name", "e.email", "e.nik_ktp"]);
+  // nik_ktp sengaja tidak dimasukkan ke searchColumns karena terenkripsi (IV acak
+  // per baris) sehingga tidak bisa dicocokkan dengan LIKE. Pencarian NIK dilakukan
+  // in-memory di controller terhadap nilai yang sudah didekripsi.
+  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, baseParams, options, ["e.name", "e.email"]);
   const [rows, totalRes] = await Promise.all([
     queryMitra(sql, params),
     queryMitra(countSql, countParams)

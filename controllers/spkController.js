@@ -1113,6 +1113,11 @@ async function getMooraResultHandler(req, res) {
       } catch (_) { filterObj = null; }
     }
 
+    // Pencarian bebas (LIKE) pada name/nik/email. NIK terenkripsi di DB (IV acak
+    // per baris) sehingga tidak bisa dicocokkan via SQL — dilakukan in-memory
+    // terhadap nilai yang sudah didekripsi oleh model getEmployees.
+    const search = (req.query.search || "").toString().trim().toLowerCase();
+
     const employeeFilterKeys = new Set([
       "lokasi_kerja",
       "lokasikerja",
@@ -1133,7 +1138,7 @@ async function getMooraResultHandler(req, res) {
       })
     );
 
-    if (hasEmployeeFilter || lokasiKerja) {
+    if (hasEmployeeFilter || lokasiKerja || search) {
       // Query Mitra DB to find matching employee IDs
       const empOptions = { pageSize: 100000 };
 
@@ -1154,9 +1159,8 @@ async function getMooraResultHandler(req, res) {
         if (filterObj.name !== undefined && filterObj.name !== null && filterObj.name !== "") {
           empFilter["e.name"] = filterObj.name;
         }
-        if (filterObj.nik !== undefined && filterObj.nik !== null && filterObj.nik !== "") {
-          empFilter["e.nik_ktp"] = filterObj.nik;
-        }
+        // nik sengaja TIDAK dikirim ke SQL (kolom nik_ktp terenkripsi) — dicocokkan
+        // in-memory di bawah bersama search.
         if (filterObj.email !== undefined && filterObj.email !== null && filterObj.email !== "") {
           empFilter["e.email"] = filterObj.email;
         }
@@ -1172,7 +1176,24 @@ async function getMooraResultHandler(req, res) {
       }
 
       const empResult = await getEmployees(empOptions);
-      const matchedIds = new Set(empResult.rows.map((e) => Number(e.id)));
+      let matchedRows = empResult.rows;
+
+      // Filter NIK in-memory (nilai sudah didekripsi oleh model)
+      if (filterObj && filterObj.nik !== undefined && filterObj.nik !== null && filterObj.nik !== "") {
+        const nikVal = String(filterObj.nik).toLowerCase();
+        matchedRows = matchedRows.filter((e) => (e.nik || "").toLowerCase().includes(nikVal));
+      }
+
+      // Search bebas pada name/nik/email (in-memory, nilai sudah didekripsi)
+      if (search) {
+        matchedRows = matchedRows.filter((e) =>
+          (e.name || "").toLowerCase().includes(search) ||
+          (e.nik || "").toLowerCase().includes(search) ||
+          (e.email || "").toLowerCase().includes(search)
+        );
+      }
+
+      const matchedIds = new Set(matchedRows.map((e) => Number(e.id)));
       filteredEmployeeIds = allEmployeeIds.filter((id) => matchedIds.has(id));
     }
 
@@ -1269,13 +1290,35 @@ async function getDepartmentsHandler(req, res) {
 async function getEmployeesHandler(req, res) {
   try {
     const options = getQueryOptions(req);
-    const { rows, total } = await getEmployees({
+    const search = (req.query.search || "").toString().trim().toLowerCase();
+
+    // NIK disimpan terenkripsi (IV acak per baris) di DB, sehingga tidak bisa
+    // dicari dengan LIKE pada kolom nik_ktp. Pencarian name/nik/email dilakukan
+    // in-memory terhadap nilai yang sudah didekripsi agar bisa cocok.
+    const fetchOptions = { ...options };
+    if (search) {
+      delete fetchOptions.search; // nonaktifkan search SQL yang salah pada nik_ktp
+      fetchOptions.pageSize = 100000;
+      fetchOptions.page = 1;
+    }
+
+    const { rows } = await getEmployees({
       deptId: req.query.dept_id || null,
       lokasiKerja: req.query.lokasi_kerja || null,
-      ...options
+      ...fetchOptions
     });
 
     let filteredRows = [...rows];
+
+    // Pencarian name / nik / email (nik sudah didekripsi oleh model)
+    if (search) {
+      filteredRows = filteredRows.filter((u) =>
+        (u.name || "").toLowerCase().includes(search) ||
+        (u.nik || "").toLowerCase().includes(search) ||
+        (u.email || "").toLowerCase().includes(search)
+      );
+    }
+
     if (canOnlyViewSelfEmployee(req.user?.role)) {
       const actor = await getEmployeeByUserId(Number(req.user?.sub || 0));
       const actorEmployeeId = Number(actor?.employee_id || req.user?.employee_id || 0);
@@ -1292,28 +1335,33 @@ async function getEmployeesHandler(req, res) {
       filteredRows = filteredRows.filter((u) => classifyRoleGroup(u.role) === roleGroup);
     }
 
+    // Pagination in-memory (karena sudah difilter in-memory)
+    const total = filteredRows.length;
+    const page = Math.max(1, parseInt(options.page || 1, 10) || 1);
+    const pageSize = Math.max(1, parseInt(options.pageSize || 10, 10) || 10);
+    const start = (page - 1) * pageSize;
+    const pagedRows = filteredRows.slice(start, start + pageSize);
+
     await logActivity(req, "VIEW", "Employee", { total });
 
-    const mapped = await Promise.all(
-      filteredRows.map(async (u) => ({
-        id: u.id,
-        name: u.name,
-        nik: await decryptNikValue(u.nik),
-        email: u.email,
-        departemen_id: u.departemen_id,
-        department_name: u.department_name,
-        lokasi_kerja: u.lokasikerja || null,
-        work_location_id: u.work_location_id || null,
-        work_location_name: u.work_location_name || null,
-        user_id: u.user_id,
-        role: u.role,
-        role_group: classifyRoleGroup(u.role)
-      }))
-    );
+    const mapped = pagedRows.map((u) => ({
+      id: u.id,
+      name: u.name,
+      nik: u.nik,
+      email: u.email,
+      departemen_id: u.departemen_id,
+      department_name: u.department_name,
+      lokasi_kerja: u.lokasikerja || null,
+      work_location_id: u.work_location_id || null,
+      work_location_name: u.work_location_name || null,
+      user_id: u.user_id,
+      role: u.role,
+      role_group: classifyRoleGroup(u.role)
+    }));
 
     return res.json({
       data: mapped,
-      meta: formatMeta(options, total)
+      meta: formatMeta({ page, pageSize }, total)
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: "Internal Server Error" });
