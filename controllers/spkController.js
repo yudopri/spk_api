@@ -122,8 +122,8 @@ function getQueryOptions(req) {
   return {
     search: req.query.search,
     filter: req.query.filter,
-    page: req.query.page ?? 1,
-    pageSize: req.query.pageSize ?? req.query.limit ?? 10, // handle both pageSize and limit
+    page: req.query.page ,
+    pageSize: req.query.pageSize ?? req.query.limit, // handle both pageSize and limit
     sort: req.query.sort
   };
 }
