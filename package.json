@@ -1,7 +1,7 @@
 {
   "name": "spk-api-express",
   "version": "1.0.0",
-  "description": "Express migration of Flask SPK AHP-MOORA backend with dual MySQL databases",
+  "description": "Express migration of Flask SPK AHP-MOORA backend with dual Supabase databases",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -9,6 +9,7 @@
     "smoke": "node tests/smoke.js"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.115.0",
     "bcryptjs": "^2.4.3",
     "brace-expansion": "^5.0.6",
     "cors": "^2.8.5",
@@ -19,7 +20,6 @@
     "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.2",
     "mathjs": "^15.2.0",
-    "mysql2": "^3.14.1",
     "pdf-lib": "^1.17.1",
     "swagger-ui-express": "^5.0.1",
     "uuid": "^11.1.1",

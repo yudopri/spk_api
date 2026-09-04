@@ -34,7 +34,7 @@ async function checkPeriodStatus(req, res, next) {
     }
 
     const rows = await querySpk(
-      "SELECT status FROM periodes WHERE id = ? LIMIT 1",
+      "SELECT status FROM periodes WHERE id = $1 LIMIT 1",
       [periodId]
     );
 

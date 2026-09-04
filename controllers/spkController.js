@@ -281,7 +281,7 @@ async function createPeriodeHandler(req, res) {
   if (data.DivisiId !== null && data.DivisiId !== undefined && data.DivisiId !== "") {
     const activeStatusCheck = await querySpk(
       `SELECT Id FROM periodes
-       WHERE DivisiId = ?
+       WHERE DivisiId = $1
        AND Status NOT IN ('Draft')
        LIMIT 1`,
       [Number(data.DivisiId)]
@@ -361,7 +361,7 @@ async function updatePeriodeHandler(req, res) {
 
       // Stamp approved_by and set status final for all results in this period
       const approvedBy = Number(req.user?.sub || 0);
-      await querySpk("UPDATE hasil_akhir SET approved_by = ?, status = 'Final' WHERE PeriodeId = ?", [
+      await querySpk("UPDATE hasil_akhir SET approved_by = $1, status = 'Final' WHERE PeriodeId = $2", [
         approvedBy,
         periodeId
       ]);
@@ -503,12 +503,12 @@ async function createAttributeHandler(req, res) {
 
   const result = await querySpk(
     `INSERT INTO attribute(nama, simbol)
-     VALUES(?, ?)`,
+     VALUES($1, $2) RETURNING id`,
     [nama, simbol]
   );
 
-  await logActivity(req, "CREATE", "Attribute", { Id: result.insertId, nama, simbol });
-  return res.json({ success: true, Id: result.insertId, message: "Attribute berhasil disimpan" });
+  await logActivity(req, "CREATE", "Attribute", { Id: result[0]?.id, nama, simbol });
+  return res.json({ success: true, Id: result[0]?.id, message: "Attribute berhasil disimpan" });
 }
 
 async function deleteAttributeHandler(req, res) {
@@ -517,8 +517,8 @@ async function deleteAttributeHandler(req, res) {
     return res.status(400).json({ success: false, message: "ID attribute tidak valid" });
   }
 
-  const result = await querySpk("DELETE FROM attribute WHERE id = ?", [id]);
-  if (!result.affectedRows) {
+  const result = await querySpk("DELETE FROM attribute WHERE id = $1", [id]);
+  if (!result || result.length === 0) {
     return res.status(404).json({ success: false, message: "Attribute tidak ditemukan" });
   }
 
@@ -528,7 +528,7 @@ async function deleteAttributeHandler(req, res) {
 
 async function updateKpiHandler(req, res) {
   const kpiId = Number(req.params.id);
-  const existingRows = await querySpk("SELECT Id, NamaKpi, Tipe, PeriodeId, BobotAhp FROM kpis WHERE Id = ? LIMIT 1", [kpiId]);
+  const existingRows = await querySpk("SELECT Id, NamaKpi, Tipe, PeriodeId, BobotAhp FROM kpis WHERE Id = $1 LIMIT 1", [kpiId]);
   const existing = existingRows[0] || null;
   if (!existing) {
     return res.status(404).json({ success: false, message: "KPI tidak ditemukan" });
@@ -570,7 +570,7 @@ async function updateKpiHandler(req, res) {
 
 async function deleteKpiHandler(req, res) {
   const kpiId = Number(req.params.id);
-  const existingRows = await querySpk("SELECT Id, PeriodeId FROM kpis WHERE Id = ? LIMIT 1", [kpiId]);
+  const existingRows = await querySpk("SELECT Id, PeriodeId FROM kpis WHERE Id = $1 LIMIT 1", [kpiId]);
   const existing = existingRows[0] || null;
   if (!existing) {
     return res.status(404).json({ success: false, message: "KPI tidak ditemukan" });
@@ -621,7 +621,7 @@ async function createKpiGroupHandler(req, res) {
 async function updateKpiGroupHandler(req, res) {
   const { id } = req.params;
   const { nama_grup, bobot_grup } = req.body;
-  const existing = await querySpk("SELECT periode_id FROM kpi_groups WHERE id = ? LIMIT 1", [id]);
+  const existing = await querySpk("SELECT periode_id FROM kpi_groups WHERE id = $1 LIMIT 1", [id]);
   if (!(await assertPeriodNotLocked(res, existing[0]?.periode_id))) return;
   await updateKpiGroup(id, { nama_grup, bobot_grup });
   await logActivity(req, "UPDATE", "KpiGroup", { id, nama_grup });
@@ -630,7 +630,7 @@ async function updateKpiGroupHandler(req, res) {
 
 async function deleteKpiGroupHandler(req, res) {
   const { id } = req.params;
-  const existing = await querySpk("SELECT periode_id FROM kpi_groups WHERE id = ? LIMIT 1", [id]);
+  const existing = await querySpk("SELECT periode_id FROM kpi_groups WHERE id = $1 LIMIT 1", [id]);
   if (!(await assertPeriodNotLocked(res, existing[0]?.periode_id))) return;
   await deleteKpiGroup(id);
   await logActivity(req, "DELETE", "KpiGroup", { id });
@@ -1012,7 +1012,7 @@ async function calculateMooraHandler(req, res) {
     const denominatorRows = await querySpk(
       `SELECT KpiId, SQRT(SUM(Achievement * Achievement)) AS denominator
      FROM penilaians
-     WHERE PeriodeId = ?
+     WHERE PeriodeId = $1
      GROUP BY KpiId`,
       [periodeId]
     );
@@ -1077,7 +1077,7 @@ async function calculateMooraHandler(req, res) {
 
     await persistMooraResultSnapshots(periodeId, kpis, ranked.map((row, index) => ({ ...row, rank: index + 1 })), detailMap);
 
-    await querySpk("UPDATE periodes SET Status = 'Processed' WHERE Id = ?", [periodeId]);
+    await querySpk("UPDATE periodes SET Status = 'Processed' WHERE Id = $1", [periodeId]);
 
     await logActivity(req, "CALCULATE", "MooraResult", { PeriodeId: periodeId, Count: resultRows.length });
     return res.json({ success: true, message: "Perangkingan MOORA selesai" });
@@ -1495,7 +1495,7 @@ async function getIndividualReportHandler(req, res) {
            FROM users u
            LEFT JOIN employees e ON e.email = u.email
            LEFT JOIN jabatans j ON e.jabatan_id = j.id
-           WHERE u.id = ?
+           WHERE u.id = $1
            LIMIT 1`,
           [result.created_by]
         );
@@ -1507,7 +1507,7 @@ async function getIndividualReportHandler(req, res) {
            FROM users u
            LEFT JOIN employees e ON e.email = u.email
            LEFT JOIN jabatans j ON e.jabatan_id = j.id
-           WHERE u.id = ?
+           WHERE u.id = $1
            LIMIT 1`,
           [result.approved_by]
         );
@@ -1940,7 +1940,7 @@ async function updateHasilReviewHandler(req, res) {
   }
   const catatanJson = JSON.stringify(catatanObj);
 
-  const resultRows = await querySpk("SELECT PeriodeId FROM hasil_akhir WHERE Id = ? LIMIT 1", [id]);
+  const resultRows = await querySpk("SELECT PeriodeId FROM hasil_akhir WHERE Id = $1 LIMIT 1", [id]);
   if (!resultRows.length) {
     return res.status(404).json({ success: false, message: "Data hasil tidak ditemukan" });
   }
@@ -1948,9 +1948,9 @@ async function updateHasilReviewHandler(req, res) {
 
   await querySpk(
     `UPDATE hasil_akhir 
-     SET catatan = ?,
-         status = COALESCE(?, status)
-     WHERE Id = ?`,
+     SET catatan = $1,
+         status = COALESCE($2, status)
+     WHERE Id = $3`,
     [catatanJson, status || null, id]
   );
 

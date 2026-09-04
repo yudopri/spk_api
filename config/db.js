@@ -1,56 +1,85 @@
-const mysql = require("mysql2/promise");
+const { createClient } = require("@supabase/supabase-js");
 
-const mitraPool = mysql.createPool({
-  host: process.env.MITRA_DB_HOST ,
-  port: Number(process.env.MITRA_DB_PORT),
-  user: process.env.MITRA_DB_USER,
-  password: process.env.MITRA_DB_PASSWORD,
-  database: process.env.MITRA_DB_NAME,
-  waitForConnections: true,
-  connectionLimit: Number(process.env.MITRA_DB_POOL),
-  queueLimit: 0
-});
+// ─── Supabase Clients ────────────────────────────────────────
+const mitraSupabase = createClient(
+  process.env.MITRA_SUPABASE_URL,
+  process.env.MITRA_SUPABASE_KEY
+);
 
-const spkPool = mysql.createPool({
-  host: process.env.SPK_DB_HOST,
-  port: Number(process.env.SPK_DB_PORT),
-  user: process.env.SPK_DB_USER,
-  password: process.env.SPK_DB_PASSWORD,
-  database: process.env.SPK_DB_NAME,
-  waitForConnections: true,
-  connectionLimit: Number(process.env.SPK_DB_POOL),
-  queueLimit: 0
-});
+const spkSupabase = createClient(
+  process.env.SPK_SUPABASE_URL,
+  process.env.SPK_SUPABASE_KEY
+);
 
+// ─── Read-Only Assertion ─────────────────────────────────────
 function assertReadOnly(sql) {
   const statement = String(sql || "").trim().toLowerCase();
-  if (!statement.startsWith("select") && !statement.startsWith("show") && !statement.startsWith("describe")) {
-    throw new Error("Mitra DB is read-only. Only SELECT/SHOW/DESCRIBE are allowed.");
+  if (
+    !statement.startsWith("select") &&
+    !statement.startsWith("show") &&
+    !statement.startsWith("describe")
+  ) {
+    throw new Error(
+      "Mitra DB is read-only. Only SELECT/SHOW/DESCRIBE are allowed."
+    );
   }
 }
 
-async function queryMitra(sql, params = []) {
-  assertReadOnly(sql);
-  const [rows] = await mitraPool.query(sql, params);
-  return rows;
-}
-
-async function querySpk(sql, params = []) {
-  const [rows] = await spkPool.query(sql, params);
-  return rows;
-}
+// ─── Supabase Raw Query Helper ───────────────────────────────
+// Supabase doesn't support raw SQL directly via the JS client.
+// We use the PostgREST-compatible query builder instead.
+// For complex queries, use rpc() with PostgreSQL functions.
 
 /**
- * Validasi nama kolom agar hanya berisi alphanumeric dan underscore.
- * Mencegah SQL injection dari input user.
+ * Execute a raw SQL query via Supabase RPC.
+ * Requires a PostgreSQL function to be created in the database.
+ *
+ * Example function:
+ * CREATE OR REPLACE FUNCTION exec_sql(sql_text TEXT, params JSONB)
+ * RETURNS SETOF JSON AS $$
+ * BEGIN
+ *   RETURN QUERY EXECUTE sql_text USING params;
+ * END;
+ * $$ LANGUAGE plpgsql;
  */
+async function execSqlRaw(supabaseClient, sql, params = []) {
+  const { data, error } = await supabaseClient.rpc("exec_sql", {
+    sql_text: sql,
+    params: JSON.stringify(params),
+  });
+  if (error) throw error;
+  return data || [];
+}
+
+// ─── Query Mitra (Read-Only) ─────────────────────────────────
+async function queryMitra(sql, params = []) {
+  assertReadOnly(sql);
+  return execSqlRaw(mitraSupabase, sql, params);
+}
+
+// ─── Query SPK (Read/Write) ──────────────────────────────────
+async function querySpk(sql, params = []) {
+  return execSqlRaw(spkSupabase, sql, params);
+}
+
+// ─── Supabase Query Builder Helpers ──────────────────────────
+// These functions use Supabase's native query builder for better performance.
+// Use these for simple CRUD operations instead of raw SQL.
+
+function mitraFrom(table) {
+  return mitraSupabase.from(table);
+}
+
+function spkFrom(table) {
+  return spkSupabase.from(table);
+}
+
+// ─── Column Name Sanitizer ───────────────────────────────────
 function sanitizeColumnName(name) {
   return /^[A-Za-z0-9_.]+$/.test(name) ? name : null;
 }
 
-/**
- * Membantu menyusun query dengan pagination, search, filter, dan sort.
- */
+// ─── Query Meta (Pagination, Search, Filter, Sort) ──────────
 function applyQueryMeta(baseSql, baseParams, options = {}, searchColumns = []) {
   let { search, filter, page, pageSize, sort } = options;
   let sql = baseSql;
@@ -60,46 +89,51 @@ function applyQueryMeta(baseSql, baseParams, options = {}, searchColumns = []) {
   const lowerSql = sql.toLowerCase();
   const hasWhere = lowerSql.includes("where");
 
-  // 1. Search (LIKE across multiple columns) — gunakan searchColumns yang sudah ditentukan
+  // 1. Search (LIKE across multiple columns)
   if (search && searchColumns.length > 0) {
-    const validCols = searchColumns.filter(col => sanitizeColumnName(col));
+    const validCols = searchColumns.filter((col) => sanitizeColumnName(col));
     if (validCols.length > 0) {
-      const searchConditions = validCols.map(col => `${col} LIKE ?`).join(" OR ");
+      const searchConditions = validCols
+        .map((col) => `${col} ILIKE $${params.length + 1}`)
+        .join(" OR ");
       whereClauses.push(`(${searchConditions})`);
-      validCols.forEach(() => params.push(`%${search}%`));
+      params.push(`%${search}%`);
     }
   }
 
-  // 2. Filter (Expects JSON object or string) — validasi nama kolom
+  // 2. Filter
   if (filter) {
     try {
-      const filterObj = typeof filter === 'string' ? JSON.parse(filter) : filter;
+      const filterObj =
+        typeof filter === "string" ? JSON.parse(filter) : filter;
       Object.entries(filterObj).forEach(([col, val]) => {
-        if (val !== undefined && val !== null && val !== '') {
+        if (val !== undefined && val !== null && val !== "") {
           const safeCol = sanitizeColumnName(col);
           if (safeCol) {
-            whereClauses.push(`${safeCol} = ?`);
+            whereClauses.push(`${safeCol} = $${params.length + 1}`);
             params.push(val);
           }
         }
       });
-    } catch (e) { /* ignore invalid json */ }
+    } catch (e) {
+      /* ignore invalid json */
+    }
   }
 
   if (whereClauses.length > 0) {
     sql += (hasWhere ? " AND " : " WHERE ") + whereClauses.join(" AND ");
   }
 
-  // Count SQL (dibuat sebelum penambahan ORDER BY dan LIMIT)
+  // Count SQL (before ORDER BY and LIMIT)
   const countSql = `SELECT COUNT(*) as total FROM (${sql}) AS t`;
   const countParams = [...params];
 
-  // 3. Sort (format: "column:asc" atau "column:desc") — validasi nama kolom
+  // 3. Sort (format: "column:asc" atau "column:desc")
   if (sort) {
     const validSortParts = [];
     const sortParts = sort.includes(",") ? sort.split(",") : [sort];
-    
-    sortParts.forEach(part => {
+
+    sortParts.forEach((part) => {
       const [col, dir] = part.trim().split(":");
       const safeCol = sanitizeColumnName(col);
       if (safeCol) {
@@ -119,12 +153,17 @@ function applyQueryMeta(baseSql, baseParams, options = {}, searchColumns = []) {
   }
 
   // 4. Pagination
-  const hasPage = page !== undefined && page !== null && page !== "";
-  const hasPageSize = pageSize !== undefined && pageSize !== null && pageSize !== "";
+  const hasPage =
+    page !== undefined && page !== null && page !== "";
+  const hasPageSize =
+    pageSize !== undefined && pageSize !== null && pageSize !== "";
   if (hasPage || hasPageSize) {
     const p = Math.max(1, parseInt(hasPage ? page : 1, 10) || 1);
-    const ps = Math.max(1, parseInt(hasPageSize ? pageSize : 10, 10) || 10);
-    sql += ` LIMIT ? OFFSET ?`;
+    const ps = Math.max(
+      1,
+      parseInt(hasPageSize ? pageSize : 10, 10) || 10
+    );
+    sql += ` LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
     params.push(ps, (p - 1) * ps);
   }
 
@@ -132,9 +171,11 @@ function applyQueryMeta(baseSql, baseParams, options = {}, searchColumns = []) {
 }
 
 module.exports = {
-  mitraPool,
-  spkPool,
+  mitraSupabase,
+  spkSupabase,
   queryMitra,
   querySpk,
-  applyQueryMeta
+  mitraFrom,
+  spkFrom,
+  applyQueryMeta,
 };
