@@ -106,12 +106,12 @@ async function getRankingByPeriod(req, res) {
     }
 
     const denominatorQuery = `
-      SELECT p.KpiId, SQRT(SUM(p.Achievement * p.Achievement)) AS denominator
+      SELECT p."KpiId", SQRT(SUM(p."Achievement" * p."Achievement")) AS denominator
       FROM penilaians p
-      INNER JOIN kpis k ON k.Id = p.KpiId
-      WHERE p.PeriodeId = $1
-      ${groupId ? `AND k.group_id = $2` : ""}
-      GROUP BY p.KpiId
+      INNER JOIN kpis k ON k."Id" = p."KpiId"
+      WHERE p."PeriodeId" = $1
+      ${groupId ? `AND k."group_id" = $2` : ""}
+      GROUP BY p."KpiId"
     `;
     const denominatorParams = groupId ? [periodeId, groupId] : [periodeId];
     const denominatorRows = await querySpk(denominatorQuery, denominatorParams);

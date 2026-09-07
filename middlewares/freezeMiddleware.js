@@ -34,11 +34,11 @@ async function checkPeriodStatus(req, res, next) {
     }
 
     const rows = await querySpk(
-      "SELECT status FROM periodes WHERE id = $1 LIMIT 1",
+      "SELECT \"Status\" FROM periodes WHERE \"Id\" = $1 LIMIT 1",
       [periodId]
     );
 
-    const status = String(rows[0]?.status || "").toLowerCase();
+    const status = String(rows[0]?.Status || "").toLowerCase();
     if (status === "locked") {
       return res.status(403).json({
         success: false,

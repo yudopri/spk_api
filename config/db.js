@@ -34,20 +34,38 @@ function assertReadOnly(sql) {
  * Execute a raw SQL query via Supabase RPC.
  * Requires a PostgreSQL function to be created in the database.
  *
- * Example function:
- * CREATE OR REPLACE FUNCTION exec_sql(sql_text TEXT, params JSONB)
+ * CREATE OR REPLACE FUNCTION exec_sql(sql_text TEXT, params TEXT[] DEFAULT '{}')
  * RETURNS SETOF JSON AS $$
+ * DECLARE
+ *   _sql TEXT;
+ *   _i INT;
+ *   _row JSON;
  * BEGIN
- *   RETURN QUERY EXECUTE sql_text USING params;
+ *   IF params IS NULL OR array_length(params, 1) IS NULL THEN
+ *     FOR _row IN EXECUTE 'SELECT row_to_json(t) FROM (' || sql_text || ') t' LOOP
+ *       RETURN NEXT _row;
+ *     END LOOP;
+ *   ELSE
+ *     _sql := sql_text;
+ *     FOR _i IN REVERSE array_length(params, 1) .. 1 LOOP
+ *       _sql := regexp_replace(_sql, '\$' || _i, quote_literal(params[_i]), 'g');
+ *     END LOOP;
+ *     FOR _row IN EXECUTE 'SELECT row_to_json(t) FROM (' || _sql || ') t' LOOP
+ *       RETURN NEXT _row;
+ *     END LOOP;
+ *   END IF;
  * END;
  * $$ LANGUAGE plpgsql;
  */
 async function execSqlRaw(supabaseClient, sql, params = []) {
   const { data, error } = await supabaseClient.rpc("exec_sql", {
     sql_text: sql,
-    params: JSON.stringify(params),
+    params: params,
   });
-  if (error) throw error;
+  if (error) {
+    console.error("[EXEC_SQL ERROR]", { sql: sql.substring(0, 200), params, error });
+    throw error;
+  }
   return data || [];
 }
 
@@ -75,8 +93,18 @@ function spkFrom(table) {
 }
 
 // ─── Column Name Sanitizer ───────────────────────────────────
+// Auto-quotes identifiers so Supabase case-sensitive columns work.
 function sanitizeColumnName(name) {
-  return /^[A-Za-z0-9_.]+$/.test(name) ? name : null;
+  if (!name || name === "*") return name || null;
+  if (/^".*"$/.test(name)) return name;
+  if (/^[A-Za-z0-9_.]+$/.test(name)) {
+    if (name.includes(".")) {
+      const parts = name.split(".");
+      return parts.map((p) => `"${p}"`).join(".");
+    }
+    return `"${name}"`;
+  }
+  return null;
 }
 
 // ─── Query Meta (Pagination, Search, Filter, Sort) ──────────

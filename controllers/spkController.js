@@ -280,9 +280,9 @@ async function createPeriodeHandler(req, res) {
 
   if (data.DivisiId !== null && data.DivisiId !== undefined && data.DivisiId !== "") {
     const activeStatusCheck = await querySpk(
-      `SELECT Id FROM periodes
-       WHERE DivisiId = $1
-       AND Status NOT IN ('Draft')
+      `SELECT "Id" FROM periodes
+       WHERE "DivisiId" = $1
+       AND "Status" NOT IN ('Draft')
        LIMIT 1`,
       [Number(data.DivisiId)]
     );
@@ -361,7 +361,7 @@ async function updatePeriodeHandler(req, res) {
 
       // Stamp approved_by and set status final for all results in this period
       const approvedBy = Number(req.user?.sub || 0);
-      await querySpk("UPDATE hasil_akhir SET approved_by = $1, status = 'Final' WHERE PeriodeId = $2", [
+      await querySpk('UPDATE hasil_akhir SET "approved_by" = $1, "status" = \'Final\' WHERE "PeriodeId" = $2', [
         approvedBy,
         periodeId
       ]);
@@ -528,7 +528,7 @@ async function deleteAttributeHandler(req, res) {
 
 async function updateKpiHandler(req, res) {
   const kpiId = Number(req.params.id);
-  const existingRows = await querySpk("SELECT Id, NamaKpi, Tipe, PeriodeId, BobotAhp FROM kpis WHERE Id = $1 LIMIT 1", [kpiId]);
+  const existingRows = await querySpk('SELECT "Id", "NamaKpi", "Tipe", "PeriodeId", "BobotAhp" FROM kpis WHERE "Id" = $1 LIMIT 1', [kpiId]);
   const existing = existingRows[0] || null;
   if (!existing) {
     return res.status(404).json({ success: false, message: "KPI tidak ditemukan" });
@@ -570,7 +570,7 @@ async function updateKpiHandler(req, res) {
 
 async function deleteKpiHandler(req, res) {
   const kpiId = Number(req.params.id);
-  const existingRows = await querySpk("SELECT Id, PeriodeId FROM kpis WHERE Id = $1 LIMIT 1", [kpiId]);
+  const existingRows = await querySpk('SELECT "Id", "PeriodeId" FROM kpis WHERE "Id" = $1 LIMIT 1', [kpiId]);
   const existing = existingRows[0] || null;
   if (!existing) {
     return res.status(404).json({ success: false, message: "KPI tidak ditemukan" });
@@ -1010,10 +1010,10 @@ async function calculateMooraHandler(req, res) {
     });
 
     const denominatorRows = await querySpk(
-      `SELECT KpiId, SQRT(SUM(Achievement * Achievement)) AS denominator
+      `SELECT "KpiId", SQRT(SUM("Achievement" * "Achievement")) AS denominator
      FROM penilaians
-     WHERE PeriodeId = $1
-     GROUP BY KpiId`,
+     WHERE "PeriodeId" = $1
+     GROUP BY "KpiId"`,
       [periodeId]
     );
 
@@ -1077,7 +1077,7 @@ async function calculateMooraHandler(req, res) {
 
     await persistMooraResultSnapshots(periodeId, kpis, ranked.map((row, index) => ({ ...row, rank: index + 1 })), detailMap);
 
-    await querySpk("UPDATE periodes SET Status = 'Processed' WHERE Id = $1", [periodeId]);
+    await querySpk('UPDATE periodes SET "Status" = \'Processed\' WHERE "Id" = $1', [periodeId]);
 
     await logActivity(req, "CALCULATE", "MooraResult", { PeriodeId: periodeId, Count: resultRows.length });
     return res.json({ success: true, message: "Perangkingan MOORA selesai" });
@@ -1940,7 +1940,7 @@ async function updateHasilReviewHandler(req, res) {
   }
   const catatanJson = JSON.stringify(catatanObj);
 
-  const resultRows = await querySpk("SELECT PeriodeId FROM hasil_akhir WHERE Id = $1 LIMIT 1", [id]);
+  const resultRows = await querySpk('SELECT "PeriodeId" FROM hasil_akhir WHERE "Id" = $1 LIMIT 1', [id]);
   if (!resultRows.length) {
     return res.status(404).json({ success: false, message: "Data hasil tidak ditemukan" });
   }
@@ -1948,9 +1948,9 @@ async function updateHasilReviewHandler(req, res) {
 
   await querySpk(
     `UPDATE hasil_akhir 
-     SET catatan = $1,
-         status = COALESCE($2, status)
-     WHERE Id = $3`,
+     SET "catatan" = $1,
+         "status" = COALESCE($2, "status")
+     WHERE "Id" = $3`,
     [catatanJson, status || null, id]
   );
 

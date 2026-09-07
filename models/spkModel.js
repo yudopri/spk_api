@@ -33,7 +33,7 @@ function decryptLaravelNik(nik_ktp) {
 
 async function insertAuditLog({ userId, email, name, action, entityName, details, ipAddress, userAgent, url, method, lastLogin }) {
   await querySpk(
-    `INSERT INTO audit_logs(Userid, Email, Name, Action, EntityName, Details, IpAddress, UserAgent, url, method, last_login)
+    `INSERT INTO audit_logs("UserId", "Email", "Name", "Action", "EntityName", "Details", "IpAddress", "UserAgent", "url", "method", "last_login")
      VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
     [userId || 0, email || "-", name || "-", action, entityName, JSON.stringify(details || {}), ipAddress || null, userAgent || null, url || null, method || null, lastLogin || null]
   );
@@ -41,21 +41,21 @@ async function insertAuditLog({ userId, email, name, action, entityName, details
 
 async function updateLastLogin(userId, email) {
   await querySpk(
-    `UPDATE audit_logs SET last_login = NOW() WHERE UserId = $1 AND Action = 'LOGIN' ORDER BY Id DESC LIMIT 1`,
+    `UPDATE audit_logs SET last_login = NOW() WHERE "UserId" = $1 AND "Action" = 'LOGIN' ORDER BY "Id" DESC LIMIT 1`,
     [userId]
   );
 }
 
 async function getLastLoginByEmail(email) {
   const rows = await querySpk(
-    `SELECT last_login FROM audit_logs WHERE Email = $1 AND Action = 'LOGIN' ORDER BY Id DESC LIMIT 1`,
+    `SELECT last_login FROM audit_logs WHERE "Email" = $1 AND "Action" = 'LOGIN' ORDER BY "Id" DESC LIMIT 1`,
     [email]
   );
   return rows[0]?.last_login || null;
 }
 
 async function getPeriodes(options = {}) {
-  const baseSql = `SELECT Id, NamaPeriode, Tahun, DivisiId, TanggalMulai, TanggalSelesai, Status
+  const baseSql = `SELECT "Id", "NamaPeriode", "Tahun", "DivisiId", "TanggalMulai", "TanggalSelesai", "Status"
      FROM periodes`;
   const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, [], options, ["NamaPeriode", "Tahun", "Status"]);
   
@@ -67,9 +67,9 @@ async function getPeriodes(options = {}) {
 }
 
 async function getPeriodesByDivision(divisiId, options = {}) {
-  const baseSql = `SELECT Id, NamaPeriode, Tahun, DivisiId, TanggalMulai, TanggalSelesai, Status
+  const baseSql = `SELECT "Id", "NamaPeriode", "Tahun", "DivisiId", "TanggalMulai", "TanggalSelesai", "Status"
      FROM periodes
-     WHERE DivisiId = $1 OR DivisiId IS NULL`;
+     WHERE "DivisiId" = $1 OR "DivisiId" IS NULL`;
   const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, [divisiId], options, ["NamaPeriode", "Tahun", "Status"]);
 
   const [rows, totalRes] = await Promise.all([
@@ -81,9 +81,9 @@ async function getPeriodesByDivision(divisiId, options = {}) {
 
 async function getPeriodeById(id) {
   const rows = await querySpk(
-    `SELECT Id, NamaPeriode, Tahun, DivisiId, TanggalMulai, TanggalSelesai, Status
+    `SELECT "Id", "NamaPeriode", "Tahun", "DivisiId", "TanggalMulai", "TanggalSelesai", "Status"
      FROM periodes
-     WHERE Id = $1
+     WHERE "Id" = $1
      LIMIT 1`,
     [id]
   );
@@ -91,16 +91,16 @@ async function getPeriodeById(id) {
 }
 async function getKpisByPeriode(periodeId) {
   return await querySpk(
-    `SELECT Id, Target, Tipe
+    `SELECT "Id", "Target", "Tipe"
      FROM kpis
-     WHERE PeriodeId = $1 AND IsActive = 1`,
+     WHERE "PeriodeId" = $1 AND "IsActive" = 1`,
     [periodeId]
   );
 }
 async function createPeriode(data) {
   const result = await querySpk(
-    `INSERT INTO periodes(NamaPeriode, Tahun, DivisiId, TanggalMulai, TanggalSelesai, Status)
-     VALUES($1, $2, $3, $4, $5, $6) RETURNING Id`,
+    `INSERT INTO periodes("NamaPeriode", "Tahun", "DivisiId", "TanggalMulai", "TanggalSelesai", "Status")
+     VALUES($1, $2, $3, $4, $5, $6) RETURNING "Id"`,
     [
       data.NamaPeriode,
       data.Tahun ?? null,
@@ -116,13 +116,13 @@ async function createPeriode(data) {
 async function updatePeriode(id, data) {
   await querySpk(
     `UPDATE periodes
-     SET NamaPeriode = $1,
-         Tahun = $2,
-         DivisiId = $3,
-         TanggalMulai = $4,
-         TanggalSelesai = $5,
-         Status = $6
-     WHERE Id = $7`,
+     SET "NamaPeriode" = $1,
+         "Tahun" = $2,
+         "DivisiId" = $3,
+         "TanggalMulai" = $4,
+         "TanggalSelesai" = $5,
+         "Status" = $6
+     WHERE "Id" = $7`,
     [
       data.NamaPeriode,
       data.Tahun ?? null,
@@ -136,7 +136,7 @@ async function updatePeriode(id, data) {
 }
 
 async function deletePeriode(id) {
-  await querySpk("DELETE FROM periodes WHERE Id = $1", [id]);
+  await querySpk('DELETE FROM periodes WHERE "Id" = $1', [id]);
 }
 
 // KPI Groups
@@ -212,23 +212,23 @@ async function updateGroupWeights(periodeId, weightByGroupId) {
 
 async function getKpis(periodeId, options = {}, groupId = null) {
   let baseSql = `
-    SELECT k.Id, k.NamaKpi, k.Tipe, k.Target, k.IsActive, k.BobotAhp, k.PeriodeId, k.attributeId, k.group_id,
+    SELECT k."Id", k."NamaKpi", k."Tipe", k."Target", k."IsActive", k."BobotAhp", k."PeriodeId", k."attributeId", k."group_id",
            ms.nama AS nama_satuan, ms.simbol AS simbol,
            kg.nama_grup AS nama_grup, kg.bobot_grup AS bobot_grup
     FROM kpis k
-    LEFT JOIN attribute ms ON ms.id = k.attributeId
-    LEFT JOIN kpi_groups kg ON kg.id = k.group_id
+    LEFT JOIN attribute ms ON ms.id = k."attributeId"
+    LEFT JOIN kpi_groups kg ON kg.id = k."group_id"
   `;
   const baseParams = [];
   const conditions = [];
   let paramIndex = 1;
   
   if (periodeId) {
-    conditions.push(`k.PeriodeId = $${paramIndex++}`);
+    conditions.push(`k."PeriodeId" = $${paramIndex++}`);
     baseParams.push(periodeId);
   }
   if (groupId) {
-    conditions.push(`k.group_id = $${paramIndex++}`);
+    conditions.push(`k."group_id" = $${paramIndex++}`);
     baseParams.push(groupId);
   }
   
@@ -246,11 +246,11 @@ async function getKpis(periodeId, options = {}, groupId = null) {
 
 async function getKpiMetadata(periodeId) {
   const rows = await querySpk(
-    `SELECT k.Id, k.PeriodeId, k.NamaKpi, k.Deskripsi, k.Tipe, k.Target, k.IsActive, k.BobotAhp, k.attributeId, k.group_id,
+    `SELECT k."Id", k."PeriodeId", k."NamaKpi", k."Deskripsi", k."Tipe", k."Target", k."IsActive", k."BobotAhp", k."attributeId", k."group_id",
             kg.bobot_grup AS bobot_grup
      FROM kpis k
-     LEFT JOIN kpi_groups kg ON kg.id = k.group_id
-     WHERE k.PeriodeId = $1`,
+     LEFT JOIN kpi_groups kg ON kg.id = k."group_id"
+     WHERE k."PeriodeId" = $1`,
     [periodeId]
   );
   return rows;
@@ -258,9 +258,9 @@ async function getKpiMetadata(periodeId) {
 
 async function getTargetByKpi(periodeId, kpiId) {
   const rows = await querySpk(
-    `SELECT Id, Target, Tipe
+    `SELECT "Id", "Target", "Tipe"
      FROM kpis
-     WHERE PeriodeId = $1 AND Id = $2
+     WHERE "PeriodeId" = $1 AND "Id" = $2
      LIMIT 1`,
     [periodeId, kpiId]
   );
@@ -269,19 +269,19 @@ async function getTargetByKpi(periodeId, kpiId) {
 
 async function getKpisByDivision(divisiId, periodeId, options = {}) {
   let baseSql =
-    `SELECT k.Id, k.NamaKpi, k.Tipe, k.Target, k.IsActive, k.BobotAhp, k.PeriodeId, k.attributeId, k.group_id,
+    `SELECT k."Id", k."NamaKpi", k."Tipe", k."Target", k."IsActive", k."BobotAhp", k."PeriodeId", k."attributeId", k."group_id",
             ms.nama AS nama_satuan, ms.simbol AS simbol,
             kg.nama_grup AS nama_grup, kg.bobot_grup AS bobot_grup
      FROM kpis k
-     JOIN periodes p ON p.Id = k.PeriodeId
-     LEFT JOIN attribute ms ON ms.id = k.attributeId
-     LEFT JOIN kpi_groups kg ON kg.id = k.group_id
-     WHERE (p.DivisiId = $1 OR p.DivisiId IS NULL)`;
+     JOIN periodes p ON p."Id" = k."PeriodeId"
+     LEFT JOIN attribute ms ON ms.id = k."attributeId"
+     LEFT JOIN kpi_groups kg ON kg.id = k."group_id"
+     WHERE (p."DivisiId" = $1 OR p."DivisiId" IS NULL)`;
   const baseParams = [divisiId];
   let paramIndex = 2;
 
   if (periodeId) {
-    baseSql += ` AND k.PeriodeId = $${paramIndex++}`;
+    baseSql += ` AND k."PeriodeId" = $${paramIndex++}`;
     baseParams.push(periodeId);
   }
 
@@ -306,16 +306,16 @@ async function getAttributes(options = {}) {
 async function createKpi(data) {
   const result = await querySpk(
     `INSERT INTO kpis(
-  NamaKpi,
-  Tipe,
-  Target,
-  IsActive,
-  PeriodeId,
-  BobotAhp,
-  attributeId,
-  group_id
+  "NamaKpi",
+  "Tipe",
+  "Target",
+  "IsActive",
+  "PeriodeId",
+  "BobotAhp",
+  "attributeId",
+  "group_id"
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING Id`,
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING "Id"`,
     [
       data.NamaKpi,
       data.Tipe,
@@ -333,15 +333,15 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING Id`,
 async function updateKpi(id, data) {
   await querySpk(
     `UPDATE kpis
-     SET NamaKpi = $1,
-         Tipe = $2,
-         Target = $3,
-         IsActive = $4,
-         PeriodeId = $5,
-         attributeId = $6,
-         BobotAhp = $7,
-         group_id = $8
-     WHERE Id = $9`,
+     SET "NamaKpi" = $1,
+         "Tipe" = $2,
+         "Target" = $3,
+         "IsActive" = $4,
+         "PeriodeId" = $5,
+         "attributeId" = $6,
+         "BobotAhp" = $7,
+         "group_id" = $8
+     WHERE "Id" = $9`,
     [
       data.NamaKpi,
       data.Tipe,
@@ -357,30 +357,30 @@ async function updateKpi(id, data) {
 }
 
 async function deleteKpi(id) {
-  await querySpk("DELETE FROM kpis WHERE Id = $1", [id]);
+  await querySpk('DELETE FROM kpis WHERE "Id" = $1', [id]);
 }
 
 async function getComparisons(periodeId) {
   return querySpk(
-    `SELECT ac.Id, ac.PeriodeId, ac.KpiAId, ac.KpiBId, ac.Nilai,
-            ka.NamaKpi AS KpiAName, kb.NamaKpi AS KpiBName
+    `SELECT ac."Id", ac."PeriodeId", ac."KpiAId", ac."KpiBId", ac."Nilai",
+            ka."NamaKpi" AS "KpiAName", kb."NamaKpi" AS "KpiBName"
      FROM ahp_comparisons ac
-     LEFT JOIN kpis ka ON ka.Id = ac.KpiAId
-     LEFT JOIN kpis kb ON kb.Id = ac.KpiBId
-     WHERE ac.PeriodeId = $1
-     ORDER BY ac.Id ASC`,
+     LEFT JOIN kpis ka ON ka."Id" = ac."KpiAId"
+     LEFT JOIN kpis kb ON kb."Id" = ac."KpiBId"
+     WHERE ac."PeriodeId" = $1
+     ORDER BY ac."Id" ASC`,
     [periodeId]
   );
 }
 
 async function replaceComparisons(periodeId, items) {
-  await querySpk("DELETE FROM ahp_comparisons WHERE PeriodeId = $1", [periodeId]);
+  await querySpk('DELETE FROM ahp_comparisons WHERE "PeriodeId" = $1', [periodeId]);
   if (!items.length) return;
 
   const valuesSql = items.map((_, i) => `($${i * 4 + 1}, $${i * 4 + 2}, $${i * 4 + 3}, $${i * 4 + 4})`).join(",");
   const params = items.flatMap((item) => [item.PeriodeId, item.KpiAId, item.KpiBId, item.Nilai]);
   await querySpk(
-    `INSERT INTO ahp_comparisons(PeriodeId, KpiAId, KpiBId, Nilai) VALUES ${valuesSql}`,
+    `INSERT INTO ahp_comparisons("PeriodeId", "KpiAId", "KpiBId", "Nilai") VALUES ${valuesSql}`,
     params
   );
 }
@@ -390,7 +390,7 @@ async function updateKpiWeights(periodeId, weightByKpiId) {
   if (entries.length === 0) return;
 
   const promises = entries.map(([kpiId, bobot]) =>
-    querySpk("UPDATE kpis SET BobotAhp = $1 WHERE Id = $2 AND PeriodeId = $3", [bobot, Number(kpiId), periodeId])
+    querySpk('UPDATE kpis SET "BobotAhp" = $1 WHERE "Id" = $2 AND "PeriodeId" = $3', [bobot, Number(kpiId), periodeId])
   );
   await Promise.all(promises);
 }
@@ -402,8 +402,8 @@ async function replaceEvaluations(periodeId, evals) {
     const placeholders = employeeIds.map((_, i) => `$${i + 2}`).join(",");
     await querySpk(
       `DELETE FROM penilaians 
-       WHERE PeriodeId = $1 
-       AND KaryawanId IN (${placeholders})`,
+       WHERE "PeriodeId" = $1 
+       AND "KaryawanId" IN (${placeholders})`,
       [Number(periodeId), ...employeeIds]
     );
   }
@@ -427,7 +427,7 @@ async function replaceEvaluations(periodeId, evals) {
 
   await querySpk(
     `INSERT INTO penilaians
-     (KaryawanId, KpiId, PeriodeId, Realisasi, Achievement, Nilai, created_by)
+     ("KaryawanId", "KpiId", "PeriodeId", "Realisasi", "Achievement", "Nilai", "created_by")
      VALUES ${valuesSql}`,
     params
   );
@@ -436,17 +436,17 @@ async function replaceEvaluations(periodeId, evals) {
 async function getEvaluationsByPeriode(periodeId, groupId = null) {
   try {
     let baseSql = `
-      SELECT p.Id, p.KaryawanId, p.KpiId, p.PeriodeId, p.Realisasi, p.Achievement, p.Nilai, p.created_by
+      SELECT p."Id", p."KaryawanId", p."KpiId", p."PeriodeId", p."Realisasi", p."Achievement", p."Nilai", p."created_by"
       FROM penilaians p
-      INNER JOIN kpis k ON k.Id = p.KpiId
+      INNER JOIN kpis k ON k."Id" = p."KpiId"
     `;
     const baseParams = [];
-    const conditions = ["p.PeriodeId = $1"];
+    const conditions = ['p."PeriodeId" = $1'];
     let paramIndex = 2;
     baseParams.push(periodeId);
     
     if (groupId) {
-      conditions.push(`k.group_id = $${paramIndex++}`);
+      conditions.push(`k."group_id" = $${paramIndex++}`);
       baseParams.push(groupId);
     }
     
@@ -464,14 +464,14 @@ async function getEvaluationsByPeriode(periodeId, groupId = null) {
 async function saveAchievement(periodeId, karyawanId, kpiId, achievement) {
   await querySpk(
     `UPDATE penilaians
-     SET Achievement = $1
-     WHERE PeriodeId = $2 AND KaryawanId = $3 AND KpiId = $4`,
+     SET "Achievement" = $1
+     WHERE "PeriodeId" = $2 AND "KaryawanId" = $3 AND "KpiId" = $4`,
     [achievement, periodeId, karyawanId, kpiId]
   );
 }
 
 async function clearHasilAkhir(periodeId) {
-  await querySpk("DELETE FROM hasil_akhir WHERE PeriodeId = $1", [periodeId]);
+  await querySpk('DELETE FROM hasil_akhir WHERE "PeriodeId" = $1', [periodeId]);
 }
 async function bulkInsertPenilaian(data) {
   if (!data.length) return;
@@ -482,7 +482,7 @@ async function bulkInsertPenilaian(data) {
   if (employeeIds.length > 0) {
     const placeholders = employeeIds.map((_, i) => `$${i + 2}`).join(",");
     await querySpk(
-      `DELETE FROM penilaians WHERE PeriodeId = $1 AND KaryawanId IN (${placeholders})`,
+      `DELETE FROM penilaians WHERE "PeriodeId" = $1 AND "KaryawanId" IN (${placeholders})`,
       [periodeId, ...employeeIds]
     );
   }
@@ -502,7 +502,7 @@ async function bulkInsertPenilaian(data) {
   ]);
 
   return await querySpk(
-    `INSERT INTO penilaians (KaryawanId, KpiId, PeriodeId, Realisasi, Achievement, created_by) VALUES ${valuesSql}`,
+    `INSERT INTO penilaians ("KaryawanId", "KpiId", "PeriodeId", "Realisasi", "Achievement", "created_by") VALUES ${valuesSql}`,
     params
   );
 }
@@ -523,7 +523,7 @@ async function insertHasilAkhirBatch(rows) {
     row.catatan || null
   ]);
   await querySpk(
-    `INSERT INTO hasil_akhir(KaryawanId, PeriodeId, NilaiOptimasi, NilaiSkala, Ranking, created_by, status, catatan) VALUES ${valuesSql}`,
+    `INSERT INTO hasil_akhir("KaryawanId", "PeriodeId", "NilaiOptimasi", "NilaiSkala", "Ranking", "created_by", "status", "catatan") VALUES ${valuesSql}`,
     params
   );
 }
@@ -531,44 +531,43 @@ async function insertHasilAkhirBatch(rows) {
 async function saveMooraSnapshot(periodeId, employeeId, snapshotJson) {
   await querySpk(
     `UPDATE hasil_akhir
-     SET catatan = $1
-     WHERE PeriodeId = $2 AND KaryawanId = $3`,
+     SET "catatan" = $1
+     WHERE "PeriodeId" = $2 AND "KaryawanId" = $3`,
     [snapshotJson, periodeId, employeeId]
   );
 }
 
 async function validateAssessmentCompleteness(periodeId) {
   const rows = await querySpk(
-    `SELECT p.KaryawanId, COUNT(DISTINCT p.KpiId) AS kpi_count, COUNT(*) AS total_rows
+    `SELECT p."KaryawanId", COUNT(DISTINCT p."KpiId") AS kpi_count, COUNT(*) AS total_rows
      FROM penilaians p
-     WHERE p.PeriodeId = $1
-     GROUP BY p.KaryawanId`,
+     WHERE p."PeriodeId" = $1
+     GROUP BY p."KaryawanId"`,
     [periodeId]
   );
   return rows;
 }
 
 async function getHasilAkhirByPeriode(periodeId, options = {}, employeeIds = null) {
-  let baseSql = `SELECT h.Id, h.KaryawanId, h.PeriodeId, h.NilaiOptimasi, h.NilaiSkala, h.Ranking, h.created_by, h.approved_by, h.status, h.catatan
+  let baseSql = `SELECT h."Id", h."KaryawanId", h."PeriodeId", h."NilaiOptimasi", h."NilaiSkala", h."Ranking", h."created_by", h."approved_by", h."status", h."catatan"
      FROM hasil_akhir h
-     WHERE h.PeriodeId = $1`;
+     WHERE h."PeriodeId" = $1`;
   const baseParams = [periodeId];
   let paramIndex = 2;
 
   if (employeeIds !== null) {
     if (employeeIds.length === 0) {
-      // No matching employees - return empty result
       return { rows: [], total: 0 };
     }
     const placeholders = employeeIds.map((_, i) => `$${paramIndex + i}`).join(",");
     paramIndex += employeeIds.length;
-    baseSql += ` AND h.KaryawanId IN (${placeholders})`;
+    baseSql += ` AND h."KaryawanId" IN (${placeholders})`;
     baseParams.push(...employeeIds);
   }
 
   const normalizedOptions = { ...options };
   if (!String(normalizedOptions.sort || "").trim()) {
-    normalizedOptions.sort = "h.Ranking:asc,h.Id:asc";
+    normalizedOptions.sort = 'h."Ranking":asc,h."Id":asc';
   }
 
   const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, baseParams, normalizedOptions, ["status"]);
@@ -585,17 +584,16 @@ async function updateHasilAkhirStatus(id, { status, catatan, approved_by }) {
   let paramIndex = 1;
 
   if (status !== undefined) {
-    fields.push(`status = $${paramIndex++}`);
+    fields.push(`"status" = $${paramIndex++}`);
     params.push(status);
   }
   if (catatan !== undefined) {
-    // Handle both object and string for catatan
     const catatanValue = typeof catatan === "object" ? JSON.stringify(catatan) : catatan;
-    fields.push(`catatan = $${paramIndex++}`);
+    fields.push(`"catatan" = $${paramIndex++}`);
     params.push(catatanValue);
   }
   if (approved_by !== undefined) {
-    fields.push(`approved_by = $${paramIndex++}`);
+    fields.push(`"approved_by" = $${paramIndex++}`);
     params.push(approved_by);
   }
 
@@ -603,7 +601,7 @@ async function updateHasilAkhirStatus(id, { status, catatan, approved_by }) {
 
   params.push(id);
   await querySpk(
-    `UPDATE hasil_akhir SET ${fields.join(", ")} WHERE Id = $${paramIndex}`,
+    `UPDATE hasil_akhir SET ${fields.join(", ")} WHERE "Id" = $${paramIndex}`,
     params
   );
 }
@@ -626,7 +624,6 @@ async function getEmployeesByIds(employeeIds) {
 async function getDepartments(options = {}) {
   let table = "departments";
   try {
-    // Check if departments table exists by running a quick select
     await queryMitra("SELECT 1 FROM departments LIMIT 1");
   } catch (_) {
     table = "departemens";
@@ -730,11 +727,10 @@ async function getEmployeeLocationsByIds(employeeIds) {
 }
 
 async function getAuditLogs(options = {}) {
-  const baseSql = `SELECT Id, UserId, Email, Name, Action, EntityName, Details, IpAddress, UserAgent, CreatedAt, url, method, last_login
+  const baseSql = `SELECT "Id", "UserId", "Email", "Name", "Action", "EntityName", "Details", "IpAddress", "UserAgent", "CreatedAt", "url", "method", "last_login"
      FROM audit_logs`;
-  // Default sort: CreatedAt DESC (terbaru di atas) jika user tidak specify sort
-  const opts = { sort: "CreatedAt:desc", ...options };
-  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, [], opts, ["Email", "Action", "EntityName"]);
+  const opts = { sort: `"CreatedAt":desc`, ...options };
+  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, [], opts, [`"Email"`, `"Action"`, `"EntityName"`]);
 
   const [rows, totalRes] = await Promise.all([
     querySpk(sql, params),
@@ -748,7 +744,7 @@ async function getAuditLogs(options = {}) {
 
 async function getDistinctKaryawanIdsByPeriode(periodeId) {
   const rows = await querySpk(
-    "SELECT DISTINCT KaryawanId FROM penilaians WHERE PeriodeId = $1 ORDER BY KaryawanId ASC",
+    'SELECT DISTINCT "KaryawanId" FROM penilaians WHERE "PeriodeId" = $1 ORDER BY "KaryawanId" ASC',
     [periodeId]
   );
   return rows.map((r) => r.KaryawanId);
@@ -756,10 +752,10 @@ async function getDistinctKaryawanIdsByPeriode(periodeId) {
 
 async function getPenilaianSummaryByPeriode(periodeId) {
   const rows = await querySpk(
-    `SELECT KaryawanId, COUNT(DISTINCT KpiId) AS kpi_count
+    `SELECT "KaryawanId", COUNT(DISTINCT "KpiId") AS kpi_count
      FROM penilaians
-     WHERE PeriodeId = $1
-     GROUP BY KaryawanId`,
+     WHERE "PeriodeId" = $1
+     GROUP BY "KaryawanId"`,
     [periodeId]
   );
   return rows;
@@ -767,10 +763,10 @@ async function getPenilaianSummaryByPeriode(periodeId) {
 
 async function getDistinctKpiIdsByPeriode(periodeId) {
   const rows = await querySpk(
-    `SELECT DISTINCT KpiId
+    `SELECT DISTINCT "KpiId"
      FROM penilaians
-     WHERE PeriodeId = $1
-     ORDER BY KpiId ASC`,
+     WHERE "PeriodeId" = $1
+     ORDER BY "KpiId" ASC`,
     [periodeId]
   );
   return rows.map((r) => r.KpiId);
@@ -780,12 +776,12 @@ async function getEvaluationChunk(periodeId, employeeIds) {
   if (!employeeIds.length) return [];
   const placeholders = employeeIds.map((_, i) => `$${i + 2}`).join(",");
   return querySpk(
-    `SELECT p.KaryawanId, p.KpiId, p.Realisasi, p.Achievement, p.Nilai,
-            k.group_id, kg.nama_grup, kg.bobot_grup
+    `SELECT p."KaryawanId", p."KpiId", p."Realisasi", p."Achievement", p."Nilai",
+            k."group_id", kg.nama_grup, kg.bobot_grup
      FROM penilaians p
-     LEFT JOIN kpis k ON k.Id = p.KpiId
-     LEFT JOIN kpi_groups kg ON kg.id = k.group_id
-     WHERE p.PeriodeId = $1 AND p.KaryawanId IN (${placeholders})`,
+     LEFT JOIN kpis k ON k."Id" = p."KpiId"
+     LEFT JOIN kpi_groups kg ON kg.id = k."group_id"
+     WHERE p."PeriodeId" = $1 AND p."KaryawanId" IN (${placeholders})`,
     [periodeId, ...employeeIds]
   );
 }

@@ -61,17 +61,22 @@ const loginLimiter = rateLimit({
 });
 app.use("/api/auth/login", loginLimiter);
 
-// ── Swagger gating ─────────────────────────────────────────────────
+// ── Swagger YAML (load once) ────────────────────────────────────────
 const swaggerEnabled = process.env.SWAGGER_ENABLED !== "false" || !isProd;
 const swaggerPath = path.join(__dirname, "docs", "swagger.yaml");
-const swaggerDocument = YAML.load(swaggerPath);
+let swaggerDocument = null;
 
-swaggerDocument.servers = [
-  {
-    url: process.env.SERVER_URL || "/",
-    description: "Current Deployment Server"
-  }
-];
+try {
+  swaggerDocument = YAML.load(swaggerPath);
+  swaggerDocument.servers = [
+    {
+      url: process.env.SERVER_URL || "/",
+      description: "Current Deployment Server"
+    }
+  ];
+} catch (e) {
+  console.warn("[SWAGGER] Failed to load swagger.yaml:", e.message);
+}
 
 // ── Routes ─────────────────────────────────────────────────────────
 app.get("/", (_req, res) => {
@@ -87,14 +92,14 @@ app.use("/api/spk", spkRoutes);
 app.use("/api", spkEngineRoutes);
 app.use("/api", masterRoutes);
 
-if (swaggerEnabled) {
+if (swaggerEnabled && swaggerDocument) {
   app.get("/api/docs/swagger.yaml", (_req, res) => {
     return res.sendFile(swaggerPath);
   });
   app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 } else {
   app.use("/api/docs", (_req, res) => {
-    return res.status(404).json({ success: false, message: "Not found" });
+    return res.status(404).json({ success: false, message: "Swagger not available" });
   });
 }
 
@@ -113,19 +118,25 @@ app.use((err, _req, res, _next) => {
 });
 
 const port = Number(process.env.PORT || 5000);
-app.listen(port, async () => {
-  console.log(`SPK API running on port ${port} [${isProd ? "production" : "development"}]`);
 
-  if (!swaggerEnabled) {
-    console.log("Swagger docs: DISABLED");
-  }
+// Vercel serverless: export app, skip listen
+if (process.env.VERCEL) {
+  module.exports = app;
+} else {
+  app.listen(port, async () => {
+    console.log(`SPK API running on port ${port} [${isProd ? "production" : "development"}]`);
 
-  try {
-    await runStartupSeedIfEnabled();
-    if (String(process.env.AUTO_SEED_PERMISSIONS || "false").toLowerCase() === "true") {
-      console.log("AUTO_SEED_PERMISSIONS enabled: seed migration completed");
+    if (!swaggerEnabled) {
+      console.log("Swagger docs: DISABLED");
     }
-  } catch (error) {
-    console.error("AUTO_SEED_PERMISSIONS failed:", error.message);
-  }
-});
+
+    try {
+      await runStartupSeedIfEnabled();
+      if (String(process.env.AUTO_SEED_PERMISSIONS || "false").toLowerCase() === "true") {
+        console.log("AUTO_SEED_PERMISSIONS enabled: seed migration completed");
+      }
+    } catch (error) {
+      console.error("AUTO_SEED_PERMISSIONS failed:", error.message);
+    }
+  });
+}
