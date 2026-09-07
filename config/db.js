@@ -1,5 +1,9 @@
 const { createClient } = require("@supabase/supabase-js");
 
+// ─── Timeout & Retry Configuration ──────────────────────────
+const DB_TIMEOUT_MS = Number(process.env.DB_TIMEOUT_MS || 8000);
+const DB_MAX_RETRIES = Number(process.env.DB_MAX_RETRIES || 2);
+
 // ─── Supabase Clients ────────────────────────────────────────
 const mitraSupabase = createClient(
   process.env.MITRA_SUPABASE_URL,
@@ -57,16 +61,40 @@ function assertReadOnly(sql) {
  * END;
  * $$ LANGUAGE plpgsql;
  */
-async function execSqlRaw(supabaseClient, sql, params = []) {
-  const { data, error } = await supabaseClient.rpc("exec_sql", {
-    sql_text: sql,
-    params: params,
-  });
-  if (error) {
-    console.error("[EXEC_SQL ERROR]", { sql: sql.substring(0, 200), params, error });
-    throw error;
+function withTimeout(promise, ms, label = "query") {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`DB_TIMEOUT: ${label} exceeded ${ms}ms`)), ms)
+    )
+  ]);
+}
+
+async function execSqlRawWithRetry(supabaseClient, sql, params = [], attempt = 1) {
+  try {
+    const { data, error } = await withTimeout(
+      supabaseClient.rpc("exec_sql", { sql_text: sql, params }),
+      DB_TIMEOUT_MS,
+      sql.substring(0, 80)
+    );
+    if (error) {
+      console.error("[EXEC_SQL ERROR]", { sql: sql.substring(0, 200), params, error });
+      throw error;
+    }
+    return data || [];
+  } catch (err) {
+    const isRetryable = err.message?.includes("DB_TIMEOUT") || err.code === "ECONNRESET" || err.status >= 502;
+    if (isRetryable && attempt <= DB_MAX_RETRIES) {
+      const delay = Math.min(300 * Math.pow(2, attempt - 1), 2000);
+      await new Promise((r) => setTimeout(r, delay));
+      return execSqlRawWithRetry(supabaseClient, sql, params, attempt + 1);
+    }
+    throw err;
   }
-  return data || [];
+}
+
+async function execSqlRaw(supabaseClient, sql, params = []) {
+  return execSqlRawWithRetry(supabaseClient, sql, params, 1);
 }
 
 // ─── Query Mitra (Read-Only) ─────────────────────────────────

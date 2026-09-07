@@ -173,12 +173,17 @@ function formatMeta(options, total) {
 }
 
 async function getPermissions(req, res) {
-  const options = getQueryOptions(req);
-  const { rows, total } = await getAllPermissions(options);
-  return res.json({
-    data: rows,
-    meta: formatMeta(options, total)
-  });
+  try {
+    const options = getQueryOptions(req);
+    const { rows, total } = await getAllPermissions(options);
+    return res.json({
+      data: rows,
+      meta: formatMeta(options, total)
+    });
+  } catch (error) {
+    console.error("[getPermissions]", error);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
 }
 
 async function createPermissionHandler(req, res) {
@@ -216,9 +221,14 @@ async function createPermissionHandler(req, res) {
 }
 
 async function getPermissionsByMitraRole(req, res) {
-  const roleName = req.params.role_name;
-  const permissions = await getRolePermissionNames(roleName);
-  return res.json(permissions);
+  try {
+    const roleName = req.params.role_name;
+    const permissions = await getRolePermissionNames(roleName);
+    return res.json(permissions);
+  } catch (error) {
+    console.error("[getPermissionsByMitraRole]", error);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
 }
 
 async function assignPermissionsToMitraRole(req, res) {
@@ -255,22 +265,31 @@ async function assignPermissionsToMitraRole(req, res) {
 }
 
 async function getRolesMitra(_req, res) {
-  const results = [];
-  for (const roleName of ROLE_ENUM) {
-    const permissions = await getRolePermissionNames(roleName);
-    results.push({
-      role_name: roleName,
-      is_mapped: permissions.length > 0,
-      permission_count: permissions.length
-    });
+  try {
+    const results = [];
+    for (const roleName of ROLE_ENUM) {
+      const permissions = await getRolePermissionNames(roleName);
+      results.push({
+        role_name: roleName,
+        is_mapped: permissions.length > 0,
+        permission_count: permissions.length
+      });
+    }
+    return res.json(results);
+  } catch (error) {
+    console.error("[getRolesMitra]", error);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
-  return res.json(results);
 }
 
 async function seedPermissions(_req, res) {
-  await seedPermissionsData();
-
-  return res.json({ success: true, message: "Permissions seeded and mapped to Enum roles successfully" });
+  try {
+    await seedPermissionsData();
+    return res.json({ success: true, message: "Permissions seeded and mapped to Enum roles successfully" });
+  } catch (error) {
+    console.error("[seedPermissions]", error);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
 }
 
 async function getUsers(req, res) {

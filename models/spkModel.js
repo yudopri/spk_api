@@ -537,6 +537,21 @@ async function saveMooraSnapshot(periodeId, employeeId, snapshotJson) {
   );
 }
 
+async function bulkSaveMooraSnapshots(periodeId, snapshots) {
+  if (!snapshots.length) return;
+  const BATCH = 50;
+  for (let i = 0; i < snapshots.length; i += BATCH) {
+    const batch = snapshots.slice(i, i + BATCH);
+    const promises = batch.map(({ employeeId, snapshotJson }) =>
+      querySpk(
+        `UPDATE hasil_akhir SET "catatan" = $1 WHERE "PeriodeId" = $2 AND "KaryawanId" = $3`,
+        [snapshotJson, periodeId, employeeId]
+      )
+    );
+    await Promise.all(promises);
+  }
+}
+
 async function validateAssessmentCompleteness(periodeId) {
   const rows = await querySpk(
     `SELECT p."KaryawanId", COUNT(DISTINCT p."KpiId") AS kpi_count, COUNT(*) AS total_rows
@@ -812,6 +827,7 @@ module.exports = {
   clearHasilAkhir,
   insertHasilAkhirBatch,
   saveMooraSnapshot,
+  bulkSaveMooraSnapshots,
   getHasilAkhirByPeriode,
   getEmployeesByIds,
   getDepartments,
