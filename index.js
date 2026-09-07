@@ -5,7 +5,6 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
-const swaggerUi = require("swagger-ui-express");
 const YAML = require("yamljs");
 const authRoutes = require("./routes/authRoutes");
 const spkRoutes = require("./routes/spkRoutes");
@@ -96,10 +95,27 @@ app.use("/api", spkEngineRoutes);
 app.use("/api", masterRoutes);
 
 if (swaggerEnabled && swaggerDocument) {
-  app.get("/api/docs/swagger.yaml", (_req, res) => {
-    return res.sendFile(swaggerPath);
+  app.get("/api/docs/swagger.json", (_req, res) => {
+    return res.json(swaggerDocument);
   });
-  app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+
+  app.get("/api/docs", (_req, res) => {
+    res.type("html").send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>SPK API Docs</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>
+    SwaggerUIBundle({ url: "/api/docs/swagger.json", dom_id: "#swagger-ui", presets: [SwaggerUIBundle.presets.apis], layout: "BaseLayout" });
+  </script>
+</body>
+</html>`);
+  });
 } else {
   app.use("/api/docs", (_req, res) => {
     return res.status(404).json({ success: false, message: "Swagger not available" });
