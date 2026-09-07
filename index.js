@@ -17,7 +17,10 @@ const app = express();
 const isProd = process.env.NODE_ENV === "production";
 
 // ── Helmet (security headers) ──────────────────────────────────────
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false
+}));
 
 // ── CORS ───────────────────────────────────────────────────────────
 // Production: restrict via CORS_ORIGINS (comma-separated).
