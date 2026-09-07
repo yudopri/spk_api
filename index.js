@@ -147,6 +147,7 @@ const port = Number(process.env.PORT || 5000);
 
 // Vercel serverless: export app, skip listen
 if (process.env.VERCEL) {
+  app.maxDuration = 30;
   module.exports = app;
 } else {
   app.listen(port, async () => {
