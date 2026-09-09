@@ -1,11 +1,53 @@
 const crypto = require("crypto");
-const { queryMitra, querySpk, applyQueryMeta } = require("../config/db");
+const { queryMitra, querySpk, applyQueryMeta, spkFrom, mitraFrom } = require("../config/db");
 
 function getLaravelKey() {
   const rawKey = process.env.LARAVEL_APP_KEY_BASE64 || process.env.APP_KEY || "";
   const keyValue = rawKey.startsWith("base64:") ? rawKey.slice(7) : rawKey;
   if (!keyValue) return null;
   return Buffer.from(keyValue, "base64");
+}
+
+// ─── PostgREST query options helper (search/filter/sort/page) ─────
+// Memetakan object `options` (search, filter, sort, page, pageSize) ke
+// query builder supabase-js, menggantikan applyQueryMeta (raw SQL).
+function applyPgMeta(q, options = {}, searchCols = []) {
+  const { search, filter, sort, page, pageSize } = options || {};
+
+  if (search && searchCols.length) {
+    const ors = searchCols.map((col) => `${col}.ilike.*${search}*`).join(",");
+    q = q.or(ors);
+  }
+
+  if (filter) {
+    let f = filter;
+    if (typeof f === "string") {
+      try { f = JSON.parse(f); } catch (_) { f = null; }
+    }
+    if (f && typeof f === "object") {
+      Object.entries(f).forEach(([col, val]) => {
+        if (val !== undefined && val !== null && val !== "") q = q.eq(col, val);
+      });
+    }
+  }
+
+  if (sort) {
+    const parts = String(sort).includes(",") ? String(sort).split(",") : [sort];
+    for (const part of parts) {
+      const [col, dir] = String(part).trim().split(":");
+      if (col) q = q.order(col, { ascending: String(dir || "asc").toLowerCase() !== "desc" });
+    }
+  }
+
+  const hasPage = page !== undefined && page !== null && page !== "";
+  const hasPageSize = pageSize !== undefined && pageSize !== null && pageSize !== "";
+  if (hasPage || hasPageSize) {
+    const p = Math.max(1, parseInt(hasPage ? page : 1, 10) || 1);
+    const ps = Math.max(1, parseInt(hasPageSize ? pageSize : 10, 10) || 10);
+    q = q.range((p - 1) * ps, p * ps - 1);
+  }
+
+  return q;
 }
 
 function decryptLaravelNik(nik_ktp) {
@@ -141,19 +183,12 @@ async function deletePeriode(id) {
 
 // KPI Groups
 async function getKpiGroups(periodeId, options = {}) {
-  let baseSql = "SELECT id, nama_grup, periode_id, bobot_grup FROM kpi_groups";
-  const baseParams = [];
-  if (periodeId) {
-    baseSql += " WHERE periode_id = $1";
-    baseParams.push(periodeId);
-  }
-
-  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, baseParams, options, ["nama_grup"]);
-  const [rows, totalRes] = await Promise.all([
-    querySpk(sql, params),
-    querySpk(countSql, countParams)
-  ]);
-  return { rows, total: totalRes[0]?.total || 0 };
+  let q = spkFrom("kpi_groups").select("id,nama_grup,periode_id,bobot_grup", { count: "exact" });
+  if (periodeId) q = q.eq("periode_id", periodeId);
+  q = applyPgMeta(q, options, ["nama_grup"]);
+  const { data, error, count } = await q;
+  if (error) throw error;
+  return { rows: data || [], total: count ?? (data || []).length };
 }
 
 async function createKpiGroup(data) {
@@ -211,42 +246,35 @@ async function updateGroupWeights(periodeId, weightByGroupId) {
 }
 
 async function getKpis(periodeId, options = {}, groupId = null) {
-  let baseSql = `
-    SELECT k."Id", k."NamaKpi", k."Tipe", k."Target", k."IsActive", k."BobotAhp", k."PeriodeId", k."attributeId", k."group_id",
-           ms.nama AS nama_satuan, ms.simbol AS simbol,
-           kg.nama_grup AS nama_grup, kg.bobot_grup AS bobot_grup
-    FROM kpis k
-    LEFT JOIN attribute ms ON ms.id = k."attributeId"
-    LEFT JOIN kpi_groups kg ON kg.id = k."group_id"
-  `;
-  const baseParams = [];
-  const conditions = [];
-  let paramIndex = 1;
-  
-  if (periodeId) {
-    conditions.push(`k."PeriodeId" = $${paramIndex++}`);
-    baseParams.push(periodeId);
-  }
-  if (groupId) {
-    conditions.push(`k."group_id" = $${paramIndex++}`);
-    baseParams.push(groupId);
-  }
-  
-  if (conditions.length > 0) {
-    baseSql += " WHERE " + conditions.join(" AND ");
-  }
+  let q = spkFrom("kpis").select(
+    "Id,NamaKpi,Tipe,Target,IsActive,BobotAhp,PeriodeId,attributeId,group_id," +
+    "attribute(nama,simbol),kpi_groups(nama_grup,bobot_grup)",
+    { count: "exact" }
+  );
+  if (periodeId) q = q.eq("PeriodeId", periodeId);
+  if (groupId) q = q.eq("group_id", groupId);
+  q = applyPgMeta(q, options, ["NamaKpi"]);
 
-  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, baseParams, options, ["k.NamaKpi", "k.Tipe"]);
-  console.log("[KPI_DEBUG] getKpis SQL:", sql);
-  console.log("[KPI_DEBUG] getKpis params:", JSON.stringify(params));
-  console.log("[KPI_DEBUG] getKpis countSql:", countSql);
-  console.log("[KPI_DEBUG] getKpis countParams:", JSON.stringify(countParams));
-  const [rows, totalRes] = await Promise.all([
-    querySpk(sql, params),
-    querySpk(countSql, countParams)
-  ]);
-  console.log("[KPI_DEBUG] getKpis rows.length:", rows.length, "totalRes:", JSON.stringify(totalRes));
-  return { rows, total: totalRes[0]?.total || 0 };
+  const { data, error, count } = await q;
+  if (error) throw error;
+
+  const rows = (data || []).map((r) => ({
+    Id: r.Id,
+    NamaKpi: r.NamaKpi,
+    Tipe: r.Tipe,
+    Target: r.Target,
+    IsActive: r.IsActive,
+    BobotAhp: r.BobotAhp,
+    PeriodeId: r.PeriodeId,
+    attributeId: r.attributeId || null,
+    group_id: r.group_id || null,
+    nama_satuan: r.attribute?.nama ?? null,
+    simbol: r.attribute?.simbol ?? null,
+    nama_grup: r.kpi_groups?.nama_grup ?? null,
+    bobot_grup: r.kpi_groups?.bobot_grup ?? 0
+  }));
+
+  return { rows, total: count ?? rows.length };
 }
 
 async function getKpiMetadata(periodeId) {
@@ -445,26 +473,22 @@ async function replaceEvaluations(periodeId, evals) {
 
 async function getEvaluationsByPeriode(periodeId, groupId = null) {
   try {
-    let baseSql = `
-      SELECT p."Id", p."KaryawanId", p."KpiId", p."PeriodeId", p."Realisasi", p."Achievement", p."Nilai", p."created_by"
-      FROM penilaians p
-      INNER JOIN kpis k ON k."Id" = p."KpiId"
-    `;
-    const baseParams = [];
-    const conditions = ['p."PeriodeId" = $1'];
-    let paramIndex = 2;
-    baseParams.push(periodeId);
-    
+    let q = spkFrom("penilaians").select("Id,KaryawanId,KpiId,PeriodeId,Realisasi,Achievement,Nilai,created_by");
+    q = q.eq("PeriodeId", periodeId);
+
     if (groupId) {
-      conditions.push(`k."group_id" = $${paramIndex++}`);
-      baseParams.push(groupId);
+      // Filter penilaian berdasarkan KPI yang tergabung dalam grup tertentu.
+      // Memakai .in("KpiId", ...) karena filter embedded (kpis.group_id)
+      // tidak berfungsi di PostgREST dan berisiko mengembalikan hasil salah.
+      const groupKpiIds = (await getKpis(periodeId, { pageSize: 100000 }, groupId)).rows
+        .map((r) => Number(r.Id));
+      if (!groupKpiIds.length) return [];
+      q = q.in("KpiId", groupKpiIds);
     }
-    
-    baseSql += " WHERE " + conditions.join(" AND ");
 
-    const rows = await querySpk(baseSql, baseParams);
-
-    return Array.isArray(rows) ? rows : [];
+    const { data, error } = await q;
+    if (error) throw error;
+    return Array.isArray(data) ? data : [];
   } catch (err) {
     console.error("MOORA getEvaluationsByPeriode error:", err);
     return [];
@@ -633,13 +657,11 @@ async function updateHasilAkhirStatus(id, { status, catatan, approved_by }) {
 
 async function getEmployeesByIds(employeeIds) {
   if (!employeeIds.length) return [];
-  const placeholders = employeeIds.map((_, i) => `$${i + 1}`).join(",");
-  const rows = await queryMitra(
-    `SELECT id, name, email, nik_ktp, departemen_id, lokasikerja
-     FROM employees
-     WHERE id IN (${placeholders})`,
-    employeeIds
-  );
+  let q = mitraFrom("employees").select("id,name,email,nik_ktp,departemen_id,lokasikerja");
+  q = q.in("id", employeeIds);
+  const { data, error } = await q;
+  if (error) throw error;
+  const rows = data || [];
   return rows.map((row) => ({
     ...row,
     nik: decryptLaravelNik(row.nik_ktp)
