@@ -81,6 +81,7 @@ async function execSqlRawWithRetry(supabaseClient, sql, params = [], attempt = 1
       console.error("[EXEC_SQL ERROR]", { sql: sql.substring(0, 200), params, error });
       throw error;
     }
+    console.log("[EXEC_SQL_DEBUG] sql:", sql.substring(0, 150), "data:", JSON.stringify(data)?.substring(0, 500), "dataLength:", Array.isArray(data) ? data.length : typeof data);
     return data || [];
   } catch (err) {
     const isRetryable = err.message?.includes("DB_TIMEOUT") || err.code === "ECONNRESET" || err.status >= 502;

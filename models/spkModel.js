@@ -237,10 +237,15 @@ async function getKpis(periodeId, options = {}, groupId = null) {
   }
 
   const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, baseParams, options, ["k.NamaKpi", "k.Tipe"]);
+  console.log("[KPI_DEBUG] getKpis SQL:", sql);
+  console.log("[KPI_DEBUG] getKpis params:", JSON.stringify(params));
+  console.log("[KPI_DEBUG] getKpis countSql:", countSql);
+  console.log("[KPI_DEBUG] getKpis countParams:", JSON.stringify(countParams));
   const [rows, totalRes] = await Promise.all([
     querySpk(sql, params),
     querySpk(countSql, countParams)
   ]);
+  console.log("[KPI_DEBUG] getKpis rows.length:", rows.length, "totalRes:", JSON.stringify(totalRes));
   return { rows, total: totalRes[0]?.total || 0 };
 }
 
@@ -286,14 +291,19 @@ async function getKpisByDivision(divisiId, periodeId, options = {}) {
   }
 
   const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, baseParams, options, ["k.NamaKpi", "k.Tipe"]);
+  console.log("[KPI_DEBUG] getKpisByDivision SQL:", sql);
+  console.log("[KPI_DEBUG] getKpisByDivision params:", JSON.stringify(params));
+  console.log("[KPI_DEBUG] getKpisByDivision countSql:", countSql);
+  console.log("[KPI_DEBUG] getKpisByDivision countParams:", JSON.stringify(countParams));
   const [rows, totalRes] = await Promise.all([
     querySpk(sql, params),
     querySpk(countSql, countParams)
   ]);
+  console.log("[KPI_DEBUG] getKpisByDivision rows.length:", rows.length, "totalRes:", JSON.stringify(totalRes));
   return { rows, total: totalRes[0]?.total || 0 };
 }
 
-async function getAttributes(options = {}) {
+ async function getAttributes(options = {}) {
   const baseSql = "SELECT id, nama, simbol FROM attribute";
   const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, [], options, ["nama", "simbol"]);
   const [rows, totalRes] = await Promise.all([
@@ -665,13 +675,20 @@ async function getDepartmentById(id) {
 }
 
 async function getEmployees({ deptId, lokasiKerja, ...options }) {
+  let wlTable = "work_locations";
+  try {
+    await queryMitra("SELECT 1 FROM work_locations LIMIT 1");
+  } catch (_) {
+    wlTable = "work_location";
+  }
+
   let baseSql = `SELECT e.id, e.name, e.email, e.nik_ktp, e.departemen_id, e.lokasikerja,
                     d.name AS department_name, wl.id AS work_location_id,
                     wl.name AS work_location_name, u.id AS user_id, u.role
              FROM employees e
              LEFT JOIN users u ON u.email = e.email
              LEFT JOIN departemens d ON d.id = e.departemen_id
-             LEFT JOIN work_locations wl ON wl.name = e.lokasikerja`;
+             LEFT JOIN ${wlTable} wl ON wl.name = e.lokasikerja`;
   const baseParams = [];
   let hasWhere = false;
   let paramIndex = 1;
@@ -701,7 +718,14 @@ async function getEmployees({ deptId, lokasiKerja, ...options }) {
 }
 
 async function getWorkLocations({ status, ...options }) {
-  let baseSql = "SELECT id, name, status, berlaku, tanggalawal, tanggal_mulai FROM work_locations";
+  let table = "work_locations";
+  try {
+    await queryMitra("SELECT 1 FROM work_locations LIMIT 1");
+  } catch (_) {
+    table = "work_location";
+  }
+
+  let baseSql = `SELECT id, name, status, berlaku, tanggalawal, tanggal_mulai FROM ${table}`;
   const baseParams = [];
   let paramIndex = 1;
   if (status) {

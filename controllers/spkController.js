@@ -431,12 +431,18 @@ async function getKpiHandler(req, res) {
     let result = { rows: [], total: 0 };
     const options = getQueryOptions(req);
 
+    console.log("[KPI_DEBUG] Request:", { periodeId, options, role: req.user?.role, dept_id: req.user?.dept_id });
+
     if (canOnlyViewOwnDivision(req.user?.role) || canOnlyViewSelfEmployee(req.user?.role)) {
       const deptId = Number(req.user?.dept_id || 0);
+      console.log("[KPI_DEBUG] Using getKpisByDivision, deptId:", deptId);
       result = deptId ? await getKpisByDivision(deptId, periodeId || null, options) : { rows: [], total: 0 };
     } else {
+      console.log("[KPI_DEBUG] Using getKpis");
       result = await getKpis(periodeId, options);
     }
+
+    console.log("[KPI_DEBUG] Result:", { rowCount: result.rows.length, total: result.total });
 
     await logActivity(req, "VIEW", "Criterion", { total: result.total });
 
