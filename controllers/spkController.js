@@ -158,6 +158,18 @@ function getPredikat(achievement) {
   return "Sangat Kurang";
 }
 
+function parseResultSnapshot(result) {
+  if (!result?.catatan) return null;
+  try {
+    const parsed = typeof result.catatan === "string"
+      ? JSON.parse(result.catatan)
+      : result.catatan;
+    return Array.isArray(parsed?.details) ? parsed : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 function buildAssessmentSnapshotRow({ periodeId, employeeId, kpiMeta, realisasi, achievement, rank, yi }) {
   const localWeight = Number(kpiMeta.BobotAhp || 0);
   const groupWeight = kpiMeta.group_id ? Number(kpiMeta.bobot_grup || 0) : 1;
@@ -1460,17 +1472,27 @@ async function getIndividualReportHandler(req, res) {
 
     const employees = await getEmployeesByIds([Number(karyawan_id)]);
     const employee = employees[0] || null;
+    const summaryMeta = await getHasilAkhirByPeriode(Number(periode_id));
+    const summary = summaryMeta.rows;
+    const result = summary.find((s) => Number(s.KaryawanId) === Number(karyawan_id));
 
     // Build data per KPI with real evaluation values (Realisasi, Achievement, Predikat)
+    const snapshot = parseResultSnapshot(result);
+    const snapshotByKpi = new Map(
+      (snapshot?.details || []).map((item) => [Number(item.kpi_id), item])
+    );
     const data = kpis.map((k) => {
       const ev = userEvals.find((e) => Number(e.KpiId) === Number(k.Id));
-      const realisasi = ev ? Number(ev.Realisasi) : 0;
+      const saved = snapshotByKpi.get(Number(k.Id));
+      const realisasi = saved ? Number(saved.realisasi) : ev ? Number(ev.Realisasi) : 0;
       const achResult = calculateAchievement({
         target: Number(k.Target),
         realisasi,
         tipe: k.Tipe
       });
-      const achievementVal = achResult.achievement;
+      const achievementVal = saved
+        ? Number(saved.achievement)
+        : achResult.achievement;
       return {
         Kriteria: k.NamaKpi,
         Tipe: k.Tipe || "-",
@@ -1481,7 +1503,7 @@ async function getIndividualReportHandler(req, res) {
         Satuan: k.simbol || "",
         group_id: k.group_id || null,
         nama_grup: k.nama_grup || null,
-        Target: k.Target || null
+        Target: saved?.target ?? k.Target ?? null
       };
     });
 
@@ -1496,10 +1518,6 @@ async function getIndividualReportHandler(req, res) {
       }
       groupMap.get(gid).items.push(item);
     });
-
-    const summaryMeta = await getHasilAkhirByPeriode(Number(periode_id));
-    const summary = summaryMeta.rows;
-    const result = summary.find((s) => Number(s.KaryawanId) === Number(karyawan_id));
 
     // Fetch Signer Information cross-DB if result exists
     let createdByInfo = null;
@@ -1750,6 +1768,15 @@ async function getSummaryReportHandler(req, res) {
       if (!evalMap[kId]) evalMap[kId] = {};
       evalMap[kId][Number(ev.KpiId)] = ev.Realisasi ?? ev.Nilai ?? 0;
     });
+    results.forEach((result) => {
+      const snapshot = parseResultSnapshot(result);
+      if (!snapshot) return;
+      const kId = Number(result.KaryawanId);
+      if (!evalMap[kId]) evalMap[kId] = {};
+      snapshot.details.forEach((detail) => {
+        evalMap[kId][Number(detail.kpi_id)] = detail.realisasi ?? 0;
+      });
+    });
 
     // Group KPIs by group_id, preserving order
     const groupOrder = [];
@@ -1955,13 +1982,23 @@ async function updateHasilReviewHandler(req, res) {
       s: (saran || "").trim()
     };
   }
-  const catatanJson = JSON.stringify(catatanObj);
-
   const resultRows = await querySpk("SELECT PeriodeId FROM hasil_akhir WHERE Id = ? LIMIT 1", [id]);
   if (!resultRows.length) {
     return res.status(404).json({ success: false, message: "Data hasil tidak ditemukan" });
   }
   if (!(await assertPeriodNotLocked(res, resultRows[0]?.PeriodeId))) return;
+
+  const existingRows = await querySpk("SELECT catatan FROM hasil_akhir WHERE Id = ? LIMIT 1", [id]);
+  let existingCatatan = {};
+  try {
+    const parsed = existingRows[0]?.catatan
+      ? JSON.parse(existingRows[0].catatan)
+      : {};
+    if (parsed && typeof parsed === "object") existingCatatan = parsed;
+  } catch (_) {
+    existingCatatan = {};
+  }
+  const catatanJson = JSON.stringify({ ...existingCatatan, ...catatanObj });
 
   await querySpk(
     `UPDATE hasil_akhir 
