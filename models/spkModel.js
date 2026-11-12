@@ -136,6 +136,12 @@ async function updatePeriode(id, data) {
 }
 
 async function deletePeriode(id) {
+  await querySpk("DELETE FROM hasil_akhir WHERE PeriodeId = ?", [id]);
+  await querySpk("DELETE FROM penilaians WHERE PeriodeId = ?", [id]);
+  await querySpk("DELETE FROM ahp_comparisons WHERE PeriodeId = ?", [id]);
+  await querySpk("DELETE FROM kpi_group_comparisons WHERE periode_id = ?", [id]);
+  await querySpk("DELETE FROM kpi_groups WHERE periode_id = ?", [id]);
+  await querySpk("DELETE FROM kpis WHERE PeriodeId = ?", [id]);
   await querySpk("DELETE FROM periodes WHERE Id = ?", [id]);
 }
 
@@ -355,6 +361,8 @@ async function updateKpi(id, data) {
 }
 
 async function deleteKpi(id) {
+  await querySpk("DELETE FROM ahp_comparisons WHERE KpiAId = ? OR KpiBId = ?", [id, id]);
+  await querySpk("DELETE FROM penilaians WHERE KpiId = ?", [id]);
   await querySpk("DELETE FROM kpis WHERE Id = ?", [id]);
 }
 

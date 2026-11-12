@@ -45,7 +45,9 @@ async function querySpk(sql, params = []) {
  * Mencegah SQL injection dari input user.
  */
 function sanitizeColumnName(name) {
-  return /^[A-Za-z0-9_.]+$/.test(name) ? name : null;
+  if (!name || name === "*") return name || null;
+  if (/^[A-Za-z0-9_.]+$/.test(name)) return name;
+  return null;
 }
 
 /**

@@ -12,7 +12,7 @@ async function checkPeriodStatus(req, res, next) {
     return next();
   }
 
-  const rawPeriodId =
+  let rawPeriodId =
     req.body?.periode_id ??
     req.body?.PeriodeId ??
     req.params?.periode_id ??
@@ -25,6 +25,13 @@ async function checkPeriodStatus(req, res, next) {
   }
 
   try {
+    if (req.params?.id && req.path.includes("/kpi/")) {
+      const kpiRows = await querySpk(
+        "SELECT PeriodeId FROM kpis WHERE Id = ? LIMIT 1",
+        [req.params.id]
+      );
+      rawPeriodId = kpiRows[0]?.PeriodeId;
+    }
     const periodId = Number(rawPeriodId);
     if (!Number.isFinite(periodId) || periodId <= 0) {
       return res.status(400).json({
@@ -39,10 +46,10 @@ async function checkPeriodStatus(req, res, next) {
     );
 
     const status = String(rows[0]?.status || "").toLowerCase();
-    if (status === "locked") {
+    if (["processed", "final", "closed", "locked", "finalized"].includes(status)) {
       return res.status(403).json({
         success: false,
-        message: "Data pada periode ini sudah terkunci dan tidak dapat diubah."
+        message: "Periode sudah diproses/final dan tidak dapat diubah."
       });
     }
 

@@ -280,7 +280,7 @@ async function createPeriodeHandler(req, res) {
 
   if (data.DivisiId !== null && data.DivisiId !== undefined && data.DivisiId !== "") {
     const activeStatusCheck = await querySpk(
-      `SELECT Id FROM periodes
+      `SELECT Id, NamaPeriode, Status FROM periodes
        WHERE DivisiId = ?
        AND Status NOT IN ('Draft')
        LIMIT 1`,
@@ -289,7 +289,8 @@ async function createPeriodeHandler(req, res) {
     if (activeStatusCheck.length > 0) {
       return res.status(409).json({
         success: false,
-        message: "Divisi ini masih memiliki periode aktif dan tidak dapat membuat periode baru."
+        message: "Divisi ini masih memiliki periode aktif dan tidak dapat membuat periode baru.",
+        conflict: activeStatusCheck[0]
       });
     }
   }
@@ -390,7 +391,7 @@ async function deletePeriodeHandler(req, res) {
     return res.status(404).json({ success: false, message: "Periode tidak ditemukan" });
   }
 
-  if (String(existing.Status || "").toLowerCase() === "locked") {
+  if (["processed", "final", "closed", "locked", "finalized"].includes(String(existing.Status || "").toLowerCase())) {
     return res.status(403).json({ success: false, message: "Periode terkunci tidak dapat dihapus" });
   }
 
@@ -459,7 +460,8 @@ async function createKpiHandler(req, res) {
 
   const data = req.body || {};
   data.attributeId = data.id_satuan ?? data.attributeId ?? null;
-  if (data.Target !== undefined && Number(data.Target) <= 0) {
+  data.Target = data.Target ?? data.target;
+  if (data.Target === undefined || !Number.isFinite(Number(data.Target)) || Number(data.Target) <= 0) {
     return res.status(400).json({ success: false, message: "Target KPI harus lebih besar dari 0" });
   }
   if (req.user?.role === "Kadiv") {
@@ -535,7 +537,7 @@ async function updateKpiHandler(req, res) {
   }
 
   const existingPeriode = await getPeriodeById(Number(existing.PeriodeId));
-  if (String(existingPeriode?.Status || "").toLowerCase() === "locked") {
+  if (["processed", "final", "closed", "locked", "finalized"].includes(String(existingPeriode?.Status || "").toLowerCase())) {
     return res.status(403).json({ success: false, message: "KPI pada periode terkunci tidak dapat diubah" });
   }
   if (!canAccessPeriodeForUser(req.user, existingPeriode)) {
@@ -549,7 +551,7 @@ async function updateKpiHandler(req, res) {
   if (!canAccessPeriodeForUser(req.user, targetPeriode)) {
     return res.status(403).json({ success: false, message: "Tidak boleh memindahkan KPI ke periode lintas divisi" });
   }
-  if (payload.Target !== undefined && Number(payload.Target) <= 0) {
+  if (payload.Target !== undefined && (!Number.isFinite(Number(payload.Target)) || Number(payload.Target) <= 0)) {
     return res.status(400).json({ success: false, message: "Target KPI harus lebih besar dari 0" });
   }
 
@@ -577,7 +579,7 @@ async function deleteKpiHandler(req, res) {
   }
 
   const existingPeriode = await getPeriodeById(Number(existing.PeriodeId));
-  if (String(existingPeriode?.Status || "").toLowerCase() === "locked") {
+  if (["processed", "final", "closed", "locked", "finalized"].includes(String(existingPeriode?.Status || "").toLowerCase())) {
     return res.status(403).json({ success: false, message: "KPI pada periode terkunci tidak dapat dihapus" });
   }
   if (!canAccessPeriodeForUser(req.user, existingPeriode)) {
@@ -848,7 +850,7 @@ async function processMooraPenilaian({ evals, periodeId, user }) {
       throw new Error(`KPI ${item.KpiId} tidak ditemukan`);
     }
 
-    const realisasi = Number(item.Realisasi);
+    const realisasi = Number(item.Realisasi ?? item.realisasi ?? item.Nilai ?? item.nilai);
 
     if (!Number.isFinite(realisasi)) {
       throw new Error("Realisasi tidak valid");
@@ -875,7 +877,7 @@ async function processMooraPenilaian({ evals, periodeId, user }) {
 }
 async function inputPenilaianHandler(req, res) {
   try {
-    const periodeId = Number(req.body?.[0]?.PeriodeId);
+    const periodeId = Number(req.body?.[0]?.PeriodeId ?? req.body?.[0]?.periode_id);
 
     const periode = await getPeriodeById(periodeId);
 
@@ -883,8 +885,8 @@ async function inputPenilaianHandler(req, res) {
       return res.status(404).json({ message: "Periode tidak ditemukan" });
     }
 
-    if (String(periode.Status).toLowerCase() === "locked") {
-      return res.status(403).json({ message: "Periode terkunci" });
+    if (["processed", "final", "closed", "locked", "finalized"].includes(String(periode.Status).toLowerCase())) {
+      return res.status(403).json({ success: false, message: "Periode sudah diproses/final dan tidak dapat menerima penilaian baru." });
     }
 
     if (!canAccessPeriodeForUser(req.user, periode)) {
@@ -1296,7 +1298,12 @@ async function getEmployeesHandler(req, res) {
     // dicari dengan LIKE pada kolom nik_ktp. Pencarian name/nik/email dilakukan
     // in-memory terhadap nilai yang sudah didekripsi agar bisa cocok.
     const fetchOptions = { ...options };
-    if (search) {
+    const includeManagementRoles = String(req.query.include_management_roles || "true").toLowerCase() === "true";
+    const needsInMemoryFiltering = search ||
+      !includeManagementRoles ||
+      Boolean(req.query.role_group) ||
+      canOnlyViewSelfEmployee(req.user?.role);
+    if (needsInMemoryFiltering) {
       delete fetchOptions.search; // nonaktifkan search SQL yang salah pada nik_ktp
       fetchOptions.pageSize = 100000;
       fetchOptions.page = 1;
@@ -1325,7 +1332,6 @@ async function getEmployeesHandler(req, res) {
       filteredRows = filteredRows.filter((u) => Number(u.id) === actorEmployeeId);
     }
 
-    const includeManagementRoles = String(req.query.include_management_roles || "true").toLowerCase() === "true";
     if (!includeManagementRoles) {
       filteredRows = filteredRows.filter((u) => classifyRoleGroup(u.role) !== "management");
     }
@@ -1339,7 +1345,7 @@ async function getEmployeesHandler(req, res) {
     // total = jumlah keseluruhan data. Bila tidak ada search, gunakan total dari
     // DB (sudah memperhitungkan dept/lokasi). Bila ada search, hitung dari hasil
     // filter in-memory agar total menyertakan pencarian.
-    const total = search ? filteredRows.length : dbTotal;
+    const total = needsInMemoryFiltering ? filteredRows.length : dbTotal;
     const page = Math.max(1, parseInt(options.page || 1, 10) || 1);
     const pageSize = Math.max(1, parseInt(options.pageSize || 10, 10) || 10);
     const start = (page - 1) * pageSize;
