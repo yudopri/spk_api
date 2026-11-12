@@ -139,6 +139,11 @@ function formatMeta(options, total) {
   };
 }
 
+function isValidPositiveId(value) {
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0;
+}
+
 function normalizeKpiType(value) {
   return String(value || "benefit").toLowerCase() === "cost" ? "cost" : "benefit";
 }
@@ -386,6 +391,9 @@ async function updatePeriodeHandler(req, res) {
 
 async function deletePeriodeHandler(req, res) {
   const periodeId = Number(req.params.id);
+  if (!isValidPositiveId(periodeId)) {
+    return res.status(400).json({ success: false, message: "ID periode tidak valid" });
+  }
   const existing = await getPeriodeById(periodeId);
   if (!existing) {
     return res.status(404).json({ success: false, message: "Periode tidak ditemukan" });
@@ -572,6 +580,9 @@ async function updateKpiHandler(req, res) {
 
 async function deleteKpiHandler(req, res) {
   const kpiId = Number(req.params.id);
+  if (!isValidPositiveId(kpiId)) {
+    return res.status(400).json({ success: false, message: "ID KPI tidak valid" });
+  }
   const existingRows = await querySpk("SELECT Id, PeriodeId FROM kpis WHERE Id = ? LIMIT 1", [kpiId]);
   const existing = existingRows[0] || null;
   if (!existing) {

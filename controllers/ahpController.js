@@ -90,7 +90,7 @@ async function validateAhpMatrix(req, res) {
 async function getRankingByPeriod(req, res) {
   try {
     const periodeId = Number(req.params.periode_id);
-    if (!Number.isFinite(periodeId) || periodeId <= 0) {
+    if (!Number.isInteger(periodeId) || periodeId <= 0) {
       return res.status(400).json({ success: false, message: "periode_id tidak valid" });
     }
 
