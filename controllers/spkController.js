@@ -1243,6 +1243,52 @@ async function getMooraResultHandler(req, res) {
     const employeeIds = [...new Set(rows.map((row) => row.KaryawanId))];
     const employees = await getEmployeesByIds(employeeIds);
     const employeeMap = new Map(employees.map((emp) => [Number(emp.id), emp]));
+    const rowsMissingDetails = rows.some((row) => !parseResultSnapshot(row)?.details?.length);
+    let fallbackDetailsByEmployee = new Map();
+
+    if (rowsMissingDetails) {
+      const [kpisMeta, evaluations] = await Promise.all([
+        getKpis(periodeId),
+        getEvaluationsByPeriode(periodeId)
+      ]);
+      const kpiMap = new Map(kpisMeta.rows.map((kpi) => [Number(kpi.Id), kpi]));
+      fallbackDetailsByEmployee = new Map();
+
+      for (const evaluation of evaluations) {
+        const kpi = kpiMap.get(Number(evaluation.KpiId));
+        if (!kpi || !employeeIds.includes(Number(evaluation.KaryawanId))) continue;
+
+        const realisasi = Number(evaluation.Realisasi ?? evaluation.Nilai ?? 0);
+        const achievement = Number(
+          evaluation.Achievement ??
+          calculateAchievement({
+            target: Number(kpi.Target),
+            realisasi,
+            tipe: kpi.Tipe
+          }).achievement
+        );
+        const localWeight = Number(kpi.BobotAhp || 0);
+        const groupWeight = kpi.group_id ? Number(kpi.bobot_grup || 0) : 1;
+        const employeeDetails = fallbackDetailsByEmployee.get(Number(evaluation.KaryawanId)) || [];
+
+        employeeDetails.push({
+          kpi_id: Number(kpi.Id),
+          nama_kpi: kpi.NamaKpi,
+          target: Number(kpi.Target || 0),
+          realisasi,
+          achievement,
+          weight_ahp: localWeight,
+          weight_group: Number(kpi.bobot_grup || 0),
+          weight_global: localWeight * groupWeight,
+          jenis: normalizeKpiType(kpi.Tipe),
+          periode_id: periodeId,
+          karyawan_id: Number(evaluation.KaryawanId),
+          yi: Number(rows.find((row) => Number(row.KaryawanId) === Number(evaluation.KaryawanId))?.NilaiOptimasi || 0),
+          rank: Number(rows.find((row) => Number(row.KaryawanId) === Number(evaluation.KaryawanId))?.Ranking || 0)
+        });
+        fallbackDetailsByEmployee.set(Number(evaluation.KaryawanId), employeeDetails);
+      }
+    }
 
     const data = await Promise.all(rows.map(async (row) => {
       const employee = employeeMap.get(Number(row.KaryawanId));
@@ -1258,6 +1304,18 @@ async function getMooraResultHandler(req, res) {
         }
       } catch (e) { console.error("[API ERROR]", e.sqlMessage || e.message);
         parsedCatatan.p = row.catatan || "";
+      }
+      if (!Array.isArray(parsedCatatan.details) || parsedCatatan.details.length === 0) {
+        const details = fallbackDetailsByEmployee.get(Number(row.KaryawanId));
+        if (details?.length) {
+          parsedCatatan = {
+            ...parsedCatatan,
+            periode_id: Number(row.PeriodeId),
+            ranking: Number(row.Ranking),
+            yi: Number(row.NilaiOptimasi),
+            details
+          };
+        }
       }
 
       return {
