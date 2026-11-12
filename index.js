@@ -14,6 +14,7 @@ const spkEngineRoutes = require("./routes/spkEngineRoutes");
 const { runStartupSeedIfEnabled } = require("./services/startupSeed");
 
 const app = express();
+app.set("trust proxy", 1);
 const isProd = process.env.NODE_ENV === "production";
 
 // ── Helmet (security headers) ──────────────────────────────────────

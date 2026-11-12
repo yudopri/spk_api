@@ -106,12 +106,12 @@ async function login(req, res) {
         method: req.method,
         lastLogin: new Date()
       });
-    } catch (auditError) {
+    } catch (auditError) { console.error("[API ERROR]", auditError.sqlMessage || auditError.message);
       console.error("[AUDIT LOGIN ERROR]", auditError);
     }
 
     return response;
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     console.error("[LOGIN ERROR]", error);
     return res.status(500).json({ status: "error", message: "Internal Server Error" });
   }
@@ -141,7 +141,7 @@ async function refresh(req, res) {
     });
 
     return res.status(200).json({ access_token: newAccessToken });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     console.error("[REFRESH ERROR]", error);
     return res.status(500).json({ message: "Internal Server Error" });
   }
@@ -209,7 +209,7 @@ async function createPermissionHandler(req, res) {
     });
 
     return res.json({ success: true, id: created.id });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     console.error("[CREATE PERMISSION ERROR]", error);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
@@ -248,7 +248,7 @@ async function assignPermissionsToMitraRole(req, res) {
     });
 
     return res.json({ success: true, message: `Permissions updated for Mitra role: ${roleName}` });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     console.error("[ASSIGN MITRA ROLE ERROR]", error);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
@@ -282,7 +282,7 @@ async function getUsers(req, res) {
       data: rows,
       meta: formatMeta(options, total)
     });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
@@ -306,7 +306,7 @@ async function getRoles(req, res) {
       })
     );
     return res.json({ success: true, data: enriched, meta: formatMeta(options, total) });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
@@ -324,7 +324,7 @@ async function getRoleDetail(req, res) {
       success: true,
       data: { id: role.id, role_name: role.role_name, permissions }
     });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
@@ -357,7 +357,7 @@ async function createRoleHandler(req, res) {
     });
 
     return res.status(201).json({ success: true, id: result.id, role_name: result.role_name });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     console.error("[CREATE ROLE ERROR]", error);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
@@ -393,7 +393,7 @@ async function updateRoleHandler(req, res) {
     });
 
     return res.json({ success: true, message: "Role berhasil diperbarui" });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     console.error("[UPDATE ROLE ERROR]", error);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
@@ -410,7 +410,7 @@ async function getPermissionDetail(req, res) {
     if (!perm) return res.status(404).json({ success: false, message: "Permission tidak ditemukan" });
 
     return res.json({ success: true, data: perm });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
@@ -445,7 +445,7 @@ async function updatePermissionHandler(req, res) {
     });
 
     return res.json({ success: true, message: "Permission berhasil diperbarui" });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     console.error("[UPDATE PERMISSION ERROR]", error);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
@@ -481,7 +481,7 @@ async function deletePermissionHandler(req, res) {
     });
 
     return res.json({ success: true, message: "Permission berhasil dihapus" });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     console.error("[DELETE PERMISSION ERROR]", error);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
@@ -522,7 +522,7 @@ async function addPermissionToRoleHandler(req, res) {
     });
 
     return res.json({ success: true, message: `Permission '${perm.permission_name}' ditambahkan ke role '${role.role_name}'` });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     console.error("[ADD PERMISSION TO ROLE ERROR]", error);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
@@ -555,7 +555,7 @@ async function removePermissionFromRoleHandler(req, res) {
     });
 
     return res.json({ success: true, message: "Permission berhasil dihapus dari role" });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     console.error("[REMOVE PERMISSION FROM ROLE ERROR]", error);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
@@ -597,7 +597,7 @@ async function bulkSetRolePermissionsHandler(req, res) {
       assigned: result.assigned,
       invalid_ids: result.invalidIds || []
     });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     console.error("[BULK SET ROLE PERMISSIONS ERROR]", error);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }

@@ -113,7 +113,7 @@ async function decryptNikValue(nik) {
     let decrypted = decipher.update(payload.value, "base64", "utf8");
     decrypted += decipher.final("utf8");
     return decrypted;
-  } catch (_) {
+  } catch (_) { console.error("[API ERROR]", _.sqlMessage || _.message);
     return value;
   }
 }
@@ -242,7 +242,7 @@ async function getPeriodeHandler(req, res) {
       })),
       meta: formatMeta(options, result.total)
     });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
@@ -379,7 +379,7 @@ async function updatePeriodeHandler(req, res) {
 
     await logActivity(req, "UPDATE", "Periode", { Id: periodeId });
     return res.json({ success: true, message: "Periode berhasil diperbarui" });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
@@ -401,7 +401,7 @@ async function deletePeriodeHandler(req, res) {
 
   try {
     await deletePeriode(periodeId);
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     if (error?.code === "ER_ROW_IS_REFERENCED_2" || error?.code === "ER_ROW_IS_REFERENCED") {
       return res.status(409).json({
         success: false,
@@ -448,7 +448,7 @@ async function getKpiHandler(req, res) {
       })),
       meta: formatMeta(options, result.total)
     });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
@@ -491,7 +491,7 @@ async function getAttributesHandler(req, res) {
       })),
       meta: formatMeta(options, total)
     });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
@@ -604,7 +604,7 @@ async function getKpiGroupsHandler(req, res) {
       data: rows,
       meta: formatMeta(options, total)
     });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
@@ -647,7 +647,7 @@ async function getGroupComparisonsHandler(req, res) {
     await logActivity(req, "VIEW", "GroupComparisons", { periodeId: Number(periode_id) });
 
     res.json({ success: true, data });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
@@ -691,7 +691,7 @@ async function saveGroupComparisonsHandler(req, res) {
       await logActivity(req, "CREATE/UPDATE", "GroupComparisons", { periodeId: Number(periode_id), count: comparisons.length });
       res.json({ success: true, message: "Comparisons saved but no groups found" });
     }
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     console.error("saveGroupComparisonsHandler error:", error);
     res.status(500).json({ success: false, message: "Internal Server Error" });
   }
@@ -798,7 +798,7 @@ async function calculateWeightsHandler(req, res) {
     });
 
     return res.json({ success: true, data: ahp.weights, consistency: ahp.consistency });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
@@ -911,7 +911,7 @@ async function inputPenilaianHandler(req, res) {
       total: normalized.length
     });
 
-  } catch (err) {
+  } catch (err) { console.error("[API ERROR]", err.sqlMessage || err.message);
     return res.status(400).json({
       success: false,
       message: err.message,
@@ -1083,7 +1083,7 @@ async function calculateMooraHandler(req, res) {
 
     await logActivity(req, "CALCULATE", "MooraResult", { PeriodeId: periodeId, Count: resultRows.length });
     return res.json({ success: true, message: "Perangkingan MOORA selesai" });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
@@ -1112,7 +1112,7 @@ async function getMooraResultHandler(req, res) {
     if (filter) {
       try {
         filterObj = typeof filter === "string" ? JSON.parse(filter) : filter;
-      } catch (_) { filterObj = null; }
+      } catch (_) { console.error("[API ERROR]", _.sqlMessage || _.message); filterObj = null; }
     }
 
     // Pencarian bebas (LIKE) pada name/nik/email. NIK terenkripsi di DB (IV acak
@@ -1233,7 +1233,7 @@ async function getMooraResultHandler(req, res) {
         } else if (row.catatan) {
           parsedCatatan.p = row.catatan;
         }
-      } catch (e) {
+      } catch (e) { console.error("[API ERROR]", e.sqlMessage || e.message);
         parsedCatatan.p = row.catatan || "";
       }
 
@@ -1261,7 +1261,7 @@ async function getMooraResultHandler(req, res) {
 
     await logActivity(req, "VIEW", "MooraResult", { PeriodeId: periodeId, Count: data.length });
     return res.json({ success: true, data, meta: formatMeta(options, total) });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
@@ -1284,7 +1284,7 @@ async function getDepartmentsHandler(req, res) {
       data: rows.map((d) => ({ id: d.id, name: d.name })),
       meta: formatMeta(options, total)
     });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
@@ -1372,7 +1372,7 @@ async function getEmployeesHandler(req, res) {
       data: mapped,
       meta: formatMeta({ page, pageSize }, total)
     });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
@@ -1398,7 +1398,7 @@ async function getWorkLocationsHandler(req, res) {
       })),
       meta: formatMeta(options, total)
     });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
@@ -1427,7 +1427,7 @@ async function getAuditLogsHandler(req, res) {
       })),
       meta: formatMeta(options, result.total)
     });
-  } catch (error) {
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
@@ -1698,7 +1698,7 @@ async function getIndividualReportHandler(req, res) {
           }
         : null
     });
-  } catch (err) {
+  } catch (err) { console.error("[API ERROR]", err.sqlMessage || err.message);
     console.error("DEBUG REPORT ERROR:", err.message);
     console.error(err.stack);
     return res.status(500).json({ success: false, message: "Internal Server Error", error_detail: err.message });
@@ -1915,7 +1915,7 @@ async function getSummaryReportHandler(req, res) {
       columns: ["NIK", "Nama", ...kpis.map((k) => k.NamaKpi), "Skor", "Ranking"],
       data
     });
-  } catch (err) {
+  } catch (err) { console.error("[API ERROR]", err.sqlMessage || err.message);
     console.error("DEBUG SUMMARY ERROR:", err.message);
     console.error(err.stack);
     return res.status(500).json({ success: false, message: "Internal Server Error", error_detail: err.message });
