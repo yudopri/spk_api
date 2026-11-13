@@ -160,6 +160,22 @@ async function updateRole(id, roleName) {
   return { success: true };
 }
 
+async function deleteRole(id) {
+  const existing = await getRoleById(id);
+  if (!existing) return { notFound: true };
+
+  await querySpk("DELETE FROM role_permissions WHERE role_id = ?", [id]);
+  await querySpk("DELETE FROM roles WHERE id = ?", [id]);
+  return { success: true, role_name: existing.role_name };
+}
+
+async function getMitraDistinctRoles() {
+  const rows = await queryMitra(
+    `SELECT DISTINCT role FROM users WHERE role IS NOT NULL AND role != '' ORDER BY role ASC`
+  );
+  return rows.map((r) => r.role).filter(Boolean);
+}
+
 // ─── CRUD Permissions ────────────────────────────────────────
 async function getPermissionById(id) {
   const rows = await querySpk("SELECT id, permission_name, path FROM permissions WHERE id = ? LIMIT 1", [id]);
@@ -269,6 +285,8 @@ module.exports = {
   getRoleById,
   createRole,
   updateRole,
+  deleteRole,
+  getMitraDistinctRoles,
   getPermissionById,
   updatePermission,
   deletePermission,

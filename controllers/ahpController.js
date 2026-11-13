@@ -49,6 +49,7 @@ async function calculateAhpLive(req, res) {
       normalizedMatrix: result.normalizedMatrix
     });
   } catch (error) {
+    console.error("[API ERROR]", error.sqlMessage || error.message);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
@@ -83,6 +84,7 @@ async function validateAhpMatrix(req, res) {
       isConsistent: result.consistency.isConsistent
     });
   } catch (error) {
+    console.error("[API ERROR]", error.sqlMessage || error.message);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
@@ -152,6 +154,7 @@ async function getRankingByPeriod(req, res) {
       data: ranked
     });
   } catch (error) {
+    console.error("[API ERROR]", error.sqlMessage || error.message);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }

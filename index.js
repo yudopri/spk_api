@@ -105,8 +105,11 @@ app.use((_req, res) => {
 });
 
 // ── Global error handler (sanitize — jangan leak err.message) ──────
-app.use((err, _req, res, _next) => {
+app.use((err, _req, res, next) => {
   console.error("[ERROR]", err);
+  if (res.headersSent) {
+    return next(err);
+  }
   return res.status(500).json({
     success: false,
     message: "Internal Server Error"

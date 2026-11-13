@@ -419,7 +419,7 @@ paths:
         '404':
           description: Role not found
     put:
-      summary: Update role name
+      summary: Update role name (built-in Mitra roles are protected)
       tags: [Roles]
       security: [{ bearerAuth: [] }]
       parameters:
@@ -439,10 +439,61 @@ paths:
       responses:
         '200':
           description: Role updated
+        '403':
+          description: Built-in Mitra role cannot be renamed
         '404':
           description: Role not found
         '409':
           description: Role name already in use
+    delete:
+      summary: Delete a custom role (built-in Mitra roles are protected)
+      tags: [Roles]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Role deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+        '400':
+          description: Invalid ID
+        '403':
+          description: Built-in Mitra role cannot be deleted
+        '404':
+          description: Role not found
+
+  /api/auth/roles/sync:
+    post:
+      summary: Sync roles from Mitra users + built-in enum into SPK roles table
+      tags: [Roles]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Sync summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  created:
+                    type: array
+                    items: { type: string }
+                  existing:
+                    type: array
+                    items: { type: string }
+                  total: { type: integer }
+                  created_count: { type: integer }
 
   /api/auth/roles/{id}/permissions:
     get:

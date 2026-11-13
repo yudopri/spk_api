@@ -20,6 +20,8 @@ const {
   getRoleById,
   createRole,
   updateRole,
+  deleteRole,
+  getMitraDistinctRoles,
   getPermissionById,
   updatePermission,
   deletePermission,
@@ -405,6 +407,18 @@ async function updateRoleHandler(req, res) {
       return res.status(400).json({ success: false, message: "role_name wajib diisi" });
     }
 
+    const existing = await getRoleById(id);
+    if (!existing) return res.status(404).json({ success: false, message: "Role tidak ditemukan" });
+
+    // Role bawaan Mitra (ROLE_ENUM) tidak boleh di-rename: findRoleByName() dipakai
+    // saat login, rename akan membuat user dengan role tersebut kehilangan permission.
+    if (ROLE_ENUM.includes(existing.role_name)) {
+      return res.status(403).json({
+        success: false,
+        message: `Role bawaan '${existing.role_name}' tidak dapat diubah`
+      });
+    }
+
     const result = await updateRole(id, String(role_name).trim());
     if (result.notFound) return res.status(404).json({ success: false, message: "Role tidak ditemukan" });
     if (result.conflict) return res.status(409).json({ success: false, message: `Role '${role_name}' sudah digunakan role lain` });
@@ -427,6 +441,100 @@ async function updateRoleHandler(req, res) {
     return res.json({ success: true, message: "Role berhasil diperbarui" });
   } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     console.error("[UPDATE ROLE ERROR]", error);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+}
+
+async function deleteRoleHandler(req, res) {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ success: false, message: "ID tidak valid" });
+    }
+
+    const role = await getRoleById(id);
+    if (!role) {
+      return res.status(404).json({ success: false, message: "Role tidak ditemukan" });
+    }
+
+    // Role bawaan Mitra (ROLE_ENUM) tidak boleh dihapus: dipakai saat login
+    // untuk mengambil permission (findRoleByName).
+    if (ROLE_ENUM.includes(role.role_name)) {
+      return res.status(403).json({
+        success: false,
+        message: `Role bawaan '${role.role_name}' tidak dapat dihapus`
+      });
+    }
+
+    const result = await deleteRole(id);
+    if (result.notFound) {
+      return res.status(404).json({ success: false, message: "Role tidak ditemukan" });
+    }
+
+    // ✅ Audit log DELETE
+    const { insertAuditLog } = require("../models/spkModel");
+    await insertAuditLog({
+      userId: req.user?.sub,
+      email: req.user?.email,
+      name: req.user?.name,
+      action: "DELETE",
+      entityName: "Role",
+      details: { id, role_name: result.role_name },
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"],
+      url: req.originalUrl,
+      method: req.method
+    });
+
+    return res.json({ success: true, message: "Role berhasil dihapus" });
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
+    console.error("[DELETE ROLE ERROR]", error);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+}
+
+async function syncRolesHandler(req, res) {
+  try {
+    // Sinkronkan role: enum bawaan + DISTINCT role yang dipakai user di DB Mitra
+    // (Mitra hanya boleh SELECT), pastikan semuanya ada di tabel roles SPK.
+    const mitraRoles = await getMitraDistinctRoles();
+    const names = [...new Set(
+      [...ROLE_ENUM, ...mitraRoles].map((name) => String(name || "").trim()).filter(Boolean)
+    )];
+
+    const created = [];
+    const existing = [];
+    for (const roleName of names) {
+      const result = await createRole(roleName);
+      if (result.exists) existing.push(roleName);
+      else created.push(roleName);
+    }
+
+    // ✅ Audit log SYNC
+    const { insertAuditLog } = require("../models/spkModel");
+    await insertAuditLog({
+      userId: req.user?.sub,
+      email: req.user?.email,
+      name: req.user?.name,
+      action: "SYNC",
+      entityName: "Role",
+      details: { created, existing_count: existing.length },
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"],
+      url: req.originalUrl,
+      method: req.method
+    });
+
+    return res.json({
+      success: true,
+      message: "Sinkronisasi role selesai",
+      created,
+      existing,
+      total: names.length,
+      created_count: created.length
+    });
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
+    console.error("[SYNC ROLES ERROR]", error);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
@@ -652,6 +760,8 @@ module.exports = {
   getRoleDetail,
   createRoleHandler,
   updateRoleHandler,
+  deleteRoleHandler,
+  syncRolesHandler,
   getPermissionDetail,
   updatePermissionHandler,
   deletePermissionHandler,
