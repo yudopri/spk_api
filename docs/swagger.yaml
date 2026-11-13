@@ -251,6 +251,40 @@ paths:
                         role: { type: string }
                   meta: { $ref: '#/components/schemas/Meta' }
 
+  /api/auth/users/{id}:
+    get:
+      summary: Get user detail by ID
+      tags: [User Management]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: User detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      name: { type: string }
+                      email: { type: string }
+                      role: { type: string }
+                      employee_id: { type: integer, nullable: true }
+                      departemen_id: { type: integer, nullable: true }
+                      lokasi_kerja: { type: string, nullable: true }
+        '400':
+          description: Invalid ID
+        '404':
+          description: User not found
+
   /api/auth/audit-logs:
     get:
       summary: Get audit logs (Manager and Dev role)

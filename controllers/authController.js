@@ -14,6 +14,7 @@ const {
   setRolePermissions,
   getRolePermissionNames,
   getAllUsers,
+  getUserById,
   // New CRUD imports
   getAllRoles,
   getRoleById,
@@ -281,6 +282,37 @@ async function getUsers(req, res) {
       success: true, 
       data: rows,
       meta: formatMeta(options, total)
+    });
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+}
+
+async function getUserDetail(req, res) {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ success: false, message: "ID tidak valid" });
+    }
+
+    const user = await getUserById(id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User tidak ditemukan" });
+    }
+
+    const employee = await findEmployeeByEmail(user.email);
+
+    return res.json({
+      success: true,
+      data: {
+        id: user.id,
+        name: employee?.name || user.name,
+        email: user.email,
+        role: user.role,
+        employee_id: employee?.id || null,
+        departemen_id: employee?.departemen_id || null,
+        lokasi_kerja: employee?.lokasikerja || null
+      }
     });
   } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
@@ -614,6 +646,7 @@ module.exports = {
   getRolesMitra,
   seedPermissions,
   getUsers,
+  getUserDetail,
   // New CRUD exports
   getRoles,
   getRoleDetail,

@@ -41,6 +41,14 @@ async function getAllUsers(options = {}) {
   return { rows, total: totalRes[0]?.total || 0 };
 }
 
+async function getUserById(id) {
+  const rows = await queryMitra(
+    "SELECT id, name, email, role FROM users WHERE id = ? LIMIT 1",
+    [id]
+  );
+  return rows[0] || null;
+}
+
 async function findEmployeeByEmail(email) {
   const rows = await queryMitra(
     "SELECT id, name, email, departemen_id, lokasikerja FROM employees WHERE email = ? LIMIT 1",
@@ -255,6 +263,7 @@ module.exports = {
   setRolePermissions,
   getRolePermissionNames,
   getAllUsers,
+  getUserById,
   // New CRUD exports
   getAllRoles,
   getRoleById,

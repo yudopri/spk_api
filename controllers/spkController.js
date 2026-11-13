@@ -474,26 +474,36 @@ async function getKpiHandler(req, res) {
 }
 
 async function createKpiHandler(req, res) {
-  if (canOnlyViewOwnDivision(req.user?.role) || canOnlyViewSelfEmployee(req.user?.role)) {
-    return res.status(403).json({ success: false, message: "Role hanya memiliki akses view KPI" });
-  }
-
-  const data = req.body || {};
-  data.attributeId = data.id_satuan ?? data.attributeId ?? null;
-  data.Target = data.Target ?? data.target;
-  if (data.Target === undefined || !Number.isFinite(Number(data.Target)) || Number(data.Target) <= 0) {
-    return res.status(400).json({ success: false, message: "Target KPI harus lebih besar dari 0" });
-  }
-  if (req.user?.role === "Kadiv") {
-    const periode = await getPeriodeById(Number(data.PeriodeId || 0));
-    if (!canAccessPeriodeForUser(req.user, periode)) {
-      return res.status(403).json({ success: false, message: "Kadiv hanya boleh membuat KPI untuk divisinya" });
+  try {
+    if (canOnlyViewOwnDivision(req.user?.role) || canOnlyViewSelfEmployee(req.user?.role)) {
+      return res.status(403).json({ success: false, message: "Role hanya memiliki akses view KPI" });
     }
-  }
 
-  const insertId = await createKpi(data);
-  await logActivity(req, "CREATE", "Criterion", { Id: insertId, Nama: data.NamaKpi });
-  return res.json({ success: true, Id: insertId });
+    const data = req.body || {};
+    const namaKpi = data.NamaKpi ?? data.nama_kpi ?? data.namaKpi;
+    if (!namaKpi || !String(namaKpi).trim()) {
+      return res.status(400).json({ success: false, message: "Nama KPI wajib diisi" });
+    }
+    data.NamaKpi = String(namaKpi).trim();
+
+    data.attributeId = data.id_satuan ?? data.attributeId ?? null;
+    data.Target = data.Target ?? data.target;
+    if (data.Target === undefined || !Number.isFinite(Number(data.Target)) || Number(data.Target) <= 0) {
+      return res.status(400).json({ success: false, message: "Target KPI harus lebih besar dari 0" });
+    }
+    if (req.user?.role === "Kadiv") {
+      const periode = await getPeriodeById(Number(data.PeriodeId || 0));
+      if (!canAccessPeriodeForUser(req.user, periode)) {
+        return res.status(403).json({ success: false, message: "Kadiv hanya boleh membuat KPI untuk divisinya" });
+      }
+    }
+
+    const insertId = await createKpi(data);
+    await logActivity(req, "CREATE", "Criterion", { Id: insertId, Nama: data.NamaKpi });
+    return res.json({ success: true, Id: insertId });
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
 }
 
 async function getAttributesHandler(req, res) {
@@ -546,6 +556,36 @@ async function deleteAttributeHandler(req, res) {
 
   await logActivity(req, "DELETE", "Attribute", { Id: id });
   return res.json({ success: true, message: "Attribute berhasil dihapus" });
+}
+
+async function updateAttributeHandler(req, res) {
+  try {
+    const id = Number(req.params.id);
+    if (!isValidPositiveId(id)) {
+      return res.status(400).json({ success: false, message: "ID attribute tidak valid" });
+    }
+
+    const { nama, simbol } = req.body || {};
+    if (!nama || !String(nama).trim() || !simbol || !String(simbol).trim()) {
+      return res.status(400).json({ success: false, message: "nama dan simbol wajib diisi" });
+    }
+
+    const existing = await querySpk("SELECT id FROM attribute WHERE id = ? LIMIT 1", [id]);
+    if (!existing.length) {
+      return res.status(404).json({ success: false, message: "Attribute tidak ditemukan" });
+    }
+
+    await querySpk("UPDATE attribute SET nama = ?, simbol = ? WHERE id = ?", [
+      String(nama).trim(),
+      String(simbol).trim(),
+      id
+    ]);
+
+    await logActivity(req, "UPDATE", "Attribute", { Id: id, nama, simbol });
+    return res.json({ success: true, message: "Attribute berhasil diperbarui" });
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
 }
 
 async function updateKpiHandler(req, res) {
@@ -632,34 +672,73 @@ async function getKpiGroupsHandler(req, res) {
   }
 }
 
+function parseGroupWeight(bobot) {
+  if (bobot === undefined || bobot === null || bobot === "") return 0;
+  const value = Number(bobot);
+  if (!Number.isFinite(value) || value < 0 || value > 100) return null;
+  return value;
+}
+
 async function createKpiGroupHandler(req, res) {
-  const { nama_grup, periode_id, bobot_grup } = req.body;
-  if (!nama_grup || !periode_id) {
-    return res.status(400).json({ success: false, message: "Nama grup dan Periode ID wajib diisi" });
+  try {
+    const { nama_grup, periode_id, bobot_grup } = req.body;
+    if (!nama_grup || !periode_id) {
+      return res.status(400).json({ success: false, message: "Nama grup dan Periode ID wajib diisi" });
+    }
+    // bobot_grup bukan bagian payload: bobot dihitung otomatis oleh AHP.
+    // Nilai di luar rentang 0-100 tetap ditolak agar input tidak valid tidak diterima.
+    if (parseGroupWeight(bobot_grup) === null) {
+      return res.status(400).json({ success: false, message: "bobot_grup harus berupa angka antara 0 dan 100" });
+    }
+    if (!(await assertPeriodNotLocked(res, periode_id))) return;
+    const id = await createKpiGroup({ nama_grup, periode_id, bobot_grup: 0 });
+    await logActivity(req, "CREATE", "KpiGroup", { id, nama_grup });
+    return res.json({ success: true, id });
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
-  if (!(await assertPeriodNotLocked(res, periode_id))) return;
-  const id = await createKpiGroup({ nama_grup, periode_id, bobot_grup });
-  await logActivity(req, "CREATE", "KpiGroup", { id, nama_grup });
-  return res.json({ success: true, id });
 }
 
 async function updateKpiGroupHandler(req, res) {
-  const { id } = req.params;
-  const { nama_grup, bobot_grup } = req.body;
-  const existing = await querySpk("SELECT periode_id FROM kpi_groups WHERE id = ? LIMIT 1", [id]);
-  if (!(await assertPeriodNotLocked(res, existing[0]?.periode_id))) return;
-  await updateKpiGroup(id, { nama_grup, bobot_grup });
-  await logActivity(req, "UPDATE", "KpiGroup", { id, nama_grup });
-  return res.json({ success: true, message: "Grup KPI berhasil diperbarui" });
+  try {
+    const { id } = req.params;
+    const { nama_grup, bobot_grup } = req.body;
+    const existing = await querySpk("SELECT periode_id, nama_grup, bobot_grup FROM kpi_groups WHERE id = ? LIMIT 1", [id]);
+    if (!existing.length) {
+      return res.status(404).json({ success: false, message: "Grup KPI tidak ditemukan" });
+    }
+    if (!(await assertPeriodNotLocked(res, existing[0]?.periode_id))) return;
+
+    // bobot_grup tidak bisa diatur manual lewat payload, pertahankan nilai tersimpan.
+    if (parseGroupWeight(bobot_grup) === null) {
+      return res.status(400).json({ success: false, message: "bobot_grup harus berupa angka antara 0 dan 100" });
+    }
+
+    await updateKpiGroup(id, {
+      nama_grup: nama_grup ?? existing[0]?.nama_grup,
+      bobot_grup: Number(existing[0]?.bobot_grup || 0)
+    });
+    await logActivity(req, "UPDATE", "KpiGroup", { id, nama_grup });
+    return res.json({ success: true, message: "Grup KPI berhasil diperbarui" });
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
 }
 
 async function deleteKpiGroupHandler(req, res) {
-  const { id } = req.params;
-  const existing = await querySpk("SELECT periode_id FROM kpi_groups WHERE id = ? LIMIT 1", [id]);
-  if (!(await assertPeriodNotLocked(res, existing[0]?.periode_id))) return;
-  await deleteKpiGroup(id);
-  await logActivity(req, "DELETE", "KpiGroup", { id });
-  return res.json({ success: true, message: "Grup KPI berhasil dihapus" });
+  try {
+    const { id } = req.params;
+    const existing = await querySpk("SELECT periode_id FROM kpi_groups WHERE id = ? LIMIT 1", [id]);
+    if (!existing.length) {
+      return res.status(404).json({ success: false, message: "Grup KPI tidak ditemukan" });
+    }
+    if (!(await assertPeriodNotLocked(res, existing[0]?.periode_id))) return;
+    await deleteKpiGroup(id);
+    await logActivity(req, "DELETE", "KpiGroup", { id });
+    return res.json({ success: true, message: "Grup KPI berhasil dihapus" });
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
 }
 
 async function getGroupComparisonsHandler(req, res) {
@@ -743,32 +822,60 @@ async function getComparisonsHandler(req, res) {
 }
 
 async function inputComparisonHandler(req, res) {
-  const dataList = req.body;
-  if (!Array.isArray(dataList) || dataList.length === 0) {
-    return res.status(400).json({ success: false, message: "Data tidak valid atau kosong" });
-  }
+  try {
+    const dataList = req.body;
+    if (!Array.isArray(dataList) || dataList.length === 0) {
+      return res.status(400).json({ success: false, message: "Data tidak valid atau kosong" });
+    }
 
-  const periodeId = dataList[0].PeriodeId;
-  if (!periodeId) {
-    return res.status(400).json({ success: false, message: "PeriodeId diperlukan" });
-  }
+    const periodeId = dataList[0].PeriodeId;
+    if (!periodeId) {
+      return res.status(400).json({ success: false, message: "PeriodeId diperlukan" });
+    }
 
-  const periode = await getPeriodeById(Number(periodeId));
-  if (String(periode?.Status || "").toLowerCase() === "locked") {
-    return res.status(403).json({ success: false, message: "Periode terkunci, AHP tidak dapat diubah" });
-  }
-  if (!canAccessPeriodeForUser(req.user, periode)) {
-    return res.status(403).json({ success: false, message: "Tidak boleh input perbandingan lintas divisi" });
-  }
+    const periode = await getPeriodeById(Number(periodeId));
+    if (!periode) {
+      return res.status(404).json({ success: false, message: "Periode tidak ditemukan" });
+    }
+    if (String(periode?.Status || "").toLowerCase() === "locked") {
+      return res.status(403).json({ success: false, message: "Periode terkunci, AHP tidak dapat diubah" });
+    }
+    if (!canAccessPeriodeForUser(req.user, periode)) {
+      return res.status(403).json({ success: false, message: "Tidak boleh input perbandingan lintas divisi" });
+    }
 
-  const validation = validatePairwiseComparisons(dataList, [...new Set(dataList.flatMap((item) => [item.KpiAId, item.KpiBId]))]);
-  if (!validation.valid) {
-    return res.status(400).json({ success: false, message: validation.message });
-  }
+    // Validasi keberadaan ID KPI pada periode sebelum proses perbandingan
+    const referencedIds = [...new Set(
+      dataList.flatMap((item) => [Number(item.KpiAId), Number(item.KpiBId)]).filter(Number.isFinite)
+    )];
+    const invalidIds = dataList.flatMap((item) => [item.KpiAId, item.KpiBId])
+      .filter((id) => !Number.isFinite(Number(id)) || Number(id) <= 0);
+    if (invalidIds.length) {
+      return res.status(400).json({ success: false, message: "ID KPI pada perbandingan tidak valid" });
+    }
 
-  await replaceComparisons(periodeId, dataList);
-  await logActivity(req, "CREATE/UPDATE", "AhpComparison", { PeriodeId: periodeId, Count: dataList.length });
-  return res.json({ success: true, message: "Matriks perbandingan AHP berhasil disimpan" });
+    const kpiMeta = await getKpis(Number(periodeId));
+    const validKpiIds = new Set(kpiMeta.rows.map((k) => Number(k.Id)));
+    const unknownIds = referencedIds.filter((id) => !validKpiIds.has(id));
+    if (unknownIds.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: "ID KPI pada perbandingan tidak valid",
+        invalid_ids: unknownIds
+      });
+    }
+
+    const validation = validatePairwiseComparisons(dataList, referencedIds);
+    if (!validation.valid) {
+      return res.status(400).json({ success: false, message: validation.message });
+    }
+
+    await replaceComparisons(periodeId, dataList);
+    await logActivity(req, "CREATE/UPDATE", "AhpComparison", { PeriodeId: periodeId, Count: dataList.length });
+    return res.json({ success: true, message: "Matriks perbandingan AHP berhasil disimpan" });
+  } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
 }
 
 async function calculateWeightsHandler(req, res) {
@@ -877,6 +984,10 @@ async function processMooraPenilaian({ evals, periodeId, user }) {
 
     if (!Number.isFinite(realisasi)) {
       throw new Error("Realisasi tidak valid");
+    }
+
+    if (realisasi < 0) {
+      throw new Error("Nilai penilaian tidak boleh negatif");
     }
 
     // ✅ Calculate achievement (boleh 0 untuk realisasi=0)
@@ -1430,7 +1541,15 @@ async function getEmployeesHandler(req, res) {
     const page = Math.max(1, parseInt(options.page || 1, 10) || 1);
     const pageSize = Math.max(1, parseInt(options.pageSize || 10, 10) || 10);
     const start = (page - 1) * pageSize;
-    const pagedRows = filteredRows.slice(start, start + pageSize);
+    // Bila tidak ada filter in-memory DAN page eksplisit diberikan, SQL di model
+    // sudah menerapkan LIMIT/OFFSET sehingga rows sudah merupakan halaman tersebut.
+    // Slice kedua kali akan membuat halaman >= 2 selalu kosong (bug pagination).
+    const sqlAlreadyPaged =
+      !needsInMemoryFiltering &&
+      options.page !== undefined &&
+      options.page !== null &&
+      options.page !== "";
+    const pagedRows = sqlAlreadyPaged ? filteredRows : filteredRows.slice(start, start + pageSize);
 
     await logActivity(req, "VIEW", "Employee", { total });
 
@@ -2088,6 +2207,7 @@ module.exports = {
   saveGroupComparisonsHandler,
   getAttributesHandler,
   createAttributeHandler,
+  updateAttributeHandler,
   deleteAttributeHandler,
   getComparisonsHandler,
   inputComparisonHandler,

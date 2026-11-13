@@ -5,6 +5,7 @@ const {
 	getWorkLocationsHandler,
 	getAttributesHandler,
 	createAttributeHandler,
+	updateAttributeHandler,
 	deleteAttributeHandler,
 	getKpiHandler,
 	createKpiHandler
@@ -20,6 +21,7 @@ router.get("/employees", authenticateToken, hasPermission("employee_view"), getE
 router.get("/work-locations", authenticateToken, hasPermission("department_view"), getWorkLocationsHandler);
 router.get("/attribute", authenticateToken, hasPermission("kpi_view"), getAttributesHandler);
 router.post("/attribute", authenticateToken, hasPermission("kpi_manage"), createAttributeHandler);
+router.put("/attribute/:id", authenticateToken, hasPermission("kpi_manage"), updateAttributeHandler);
 router.delete("/attribute/:id", authenticateToken, hasPermission("kpi_manage"), deleteAttributeHandler);
 router.get("/kriteria", authenticateToken, hasPermission("kpi_view"), getKpiHandler);
 router.post("/kriteria", authenticateToken, hasPermission("kpi_manage"), createKpiHandler);

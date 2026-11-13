@@ -10,6 +10,7 @@ const {
   getRolesMitra,
   seedPermissions,
   getUsers,
+  getUserDetail,
   // New CRUD imports
   getRoles,
   getRoleDetail,
@@ -56,6 +57,7 @@ router.post("/mitra-roles/:role_name/permissions", authenticateToken, hasPermiss
 router.get("/roles-mitra", authenticateToken, hasPermission("user_manage"), getRolesMitra);
 router.post("/seed-permissions", authenticateToken, hasPermission("user_manage"), seedPermissions);
 router.get("/users", authenticateToken, hasPermission("user_manage"), getUsers);
+router.get("/users/:id", authenticateToken, hasPermission("user_manage"), getUserDetail);
 router.get("/audit-logs", authenticateToken, hasPermission("audit_view"), hasRole(["Manager", "Dev", "Hrd"]), getAuditLogsHandler);
 
 module.exports = router;
