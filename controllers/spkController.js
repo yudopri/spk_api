@@ -314,18 +314,22 @@ async function createPeriodeHandler(req, res) {
     if (!dept) {
       return res.status(400).json({ success: false, message: "Divisi tidak ditemukan" });
     }
-    const activeStatusCheck = await querySpk(
+    // Aturan: satu divisi satu periode aktif. Namun jika periode terbaru
+    // di divisi tersebut sudah berstatus 'locked', pembuatan periode baru diizinkan.
+    const latestPeriode = await querySpk(
       `SELECT Id, NamaPeriode, Status FROM periodes
        WHERE DivisiId = ?
-       AND Status NOT IN ('Draft')
+       ORDER BY Id DESC
        LIMIT 1`,
       [Number(data.DivisiId)]
     );
-    if (activeStatusCheck.length > 0) {
+    const latest = latestPeriode[0] || null;
+    const latestStatus = String(latest?.Status || "").toLowerCase();
+    if (latest && latestStatus !== "draft" && latestStatus !== "locked") {
       return res.status(409).json({
         success: false,
         message: "Divisi ini masih memiliki periode aktif dan tidak dapat membuat periode baru.",
-        conflict: activeStatusCheck[0]
+        conflict: latest
       });
     }
   }
