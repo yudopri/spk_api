@@ -90,6 +90,14 @@ function toIso(value) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+// MySQL tidak memahami format ISO "...T..:..Z"; ubah ke "YYYY-MM-DD HH:MM:SS" (UTC)
+function toMysqlDateTime(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString().slice(0, 19).replace("T", " ");
+}
+
 function getLaravelKey() {
   const rawKey = process.env.LARAVEL_APP_KEY_BASE64 || process.env.APP_KEY || "";
   const keyValue = rawKey.startsWith("base64:") ? rawKey.slice(7) : rawKey;
@@ -302,6 +310,17 @@ async function createPeriodeHandler(req, res) {
     data.DivisiId = Number(req.user?.dept_id || 0) || data.DivisiId;
   }
 
+  if (data.TanggalMulai !== null && data.TanggalMulai !== undefined && data.TanggalMulai !== "") {
+    const t = toMysqlDateTime(data.TanggalMulai);
+    if (!t) return res.status(400).json({ success: false, message: "Format Tanggal Mulai tidak valid" });
+    data.TanggalMulai = t;
+  }
+  if (data.TanggalSelesai !== null && data.TanggalSelesai !== undefined && data.TanggalSelesai !== "") {
+    const t = toMysqlDateTime(data.TanggalSelesai);
+    if (!t) return res.status(400).json({ success: false, message: "Format Tanggal Selesai tidak valid" });
+    data.TanggalSelesai = t;
+  }
+
   if (data.DivisiId === null || data.DivisiId === undefined || data.DivisiId === "") {
     return res.status(400).json({ success: false, message: "Divisi wajib diisi" });
   }
@@ -384,6 +403,17 @@ async function updatePeriodeHandler(req, res) {
       payload.DivisiId = Number.isFinite(divisiNumber) ? divisiNumber : existing.DivisiId;
     } else if (payload.DivisiId === "") {
       payload.DivisiId = existing.DivisiId;
+    }
+
+    if (payload.TanggalMulai !== undefined) {
+      const t = toMysqlDateTime(payload.TanggalMulai);
+      if (!t) return res.status(400).json({ success: false, message: "Format Tanggal Mulai tidak valid" });
+      payload.TanggalMulai = t;
+    }
+    if (payload.TanggalSelesai !== undefined) {
+      const t = toMysqlDateTime(payload.TanggalSelesai);
+      if (!t) return res.status(400).json({ success: false, message: "Format Tanggal Selesai tidak valid" });
+      payload.TanggalSelesai = t;
     }
 
     // Validasi rentang nilai agar tidak melanggar FK/constraint (mencegah HTTP 500)
