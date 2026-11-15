@@ -282,6 +282,9 @@ async function createPeriodeHandler(req, res) {
   if (data.Tahun !== null && data.Tahun !== "") {
     const tahunNumber = Number(data.Tahun);
     data.Tahun = Number.isFinite(tahunNumber) ? tahunNumber : null;
+    if (data.Tahun !== null && (!Number.isInteger(data.Tahun) || data.Tahun < 2000 || data.Tahun > 2100)) {
+      return res.status(400).json({ success: false, message: "Tahun periode tidak valid" });
+    }
   } else {
     data.Tahun = null;
   }
@@ -295,7 +298,22 @@ async function createPeriodeHandler(req, res) {
 
   if (!(await assertPeriodNotLocked(res, data.PeriodeId))) return;
 
+  if (req.user?.role === "Kadiv") {
+    data.DivisiId = Number(req.user?.dept_id || 0) || data.DivisiId;
+  }
+
+  if (data.DivisiId === null || data.DivisiId === undefined || data.DivisiId === "") {
+    return res.status(400).json({ success: false, message: "Divisi wajib diisi" });
+  }
+
   if (data.DivisiId !== null && data.DivisiId !== undefined && data.DivisiId !== "") {
+    if (!Number.isInteger(data.DivisiId) || data.DivisiId <= 0) {
+      return res.status(400).json({ success: false, message: "Divisi tidak valid" });
+    }
+    const dept = await getDepartmentById(data.DivisiId);
+    if (!dept) {
+      return res.status(400).json({ success: false, message: "Divisi tidak ditemukan" });
+    }
     const activeStatusCheck = await querySpk(
       `SELECT Id, NamaPeriode, Status FROM periodes
        WHERE DivisiId = ?
@@ -310,10 +328,6 @@ async function createPeriodeHandler(req, res) {
         conflict: activeStatusCheck[0]
       });
     }
-  }
-
-  if (req.user?.role === "Kadiv") {
-    data.DivisiId = Number(req.user?.dept_id || 0) || data.DivisiId;
   }
 
   const insertId = await createPeriode(data);
@@ -368,6 +382,29 @@ async function updatePeriodeHandler(req, res) {
       payload.DivisiId = existing.DivisiId;
     }
 
+    // Validasi rentang nilai agar tidak melanggar FK/constraint (mencegah HTTP 500)
+    if (payload.Tahun !== undefined && payload.Tahun !== null) {
+      const tahunCheck = Number(payload.Tahun);
+      if (!Number.isInteger(tahunCheck) || tahunCheck < 2000 || tahunCheck > 2100) {
+        return res.status(400).json({ success: false, message: "Tahun periode tidak valid" });
+      }
+    }
+    const effectiveDivisi = payload.DivisiId ?? existing.DivisiId;
+    if (effectiveDivisi === null || effectiveDivisi === undefined || Number(effectiveDivisi) <= 0) {
+      return res.status(400).json({ success: false, message: "Divisi wajib diisi" });
+    }
+
+    if (payload.DivisiId !== undefined && payload.DivisiId !== null) {
+      const divisiCheck = Number(payload.DivisiId);
+      if (!Number.isInteger(divisiCheck) || divisiCheck <= 0) {
+        return res.status(400).json({ success: false, message: "Divisi tidak valid" });
+      }
+      const dept = await getDepartmentById(divisiCheck);
+      if (!dept) {
+        return res.status(400).json({ success: false, message: "Divisi tidak ditemukan" });
+      }
+    }
+
     if (payload.Status === "Final" && existing.Status !== "Final") {
       // Pastikan semua hasil_akhir sudah direview (Status = Reviewed atau Final)
       const records = await getHasilAkhirByPeriode(periodeId);
@@ -400,6 +437,21 @@ async function updatePeriodeHandler(req, res) {
     await logActivity(req, "UPDATE", "Periode", { Id: periodeId });
     return res.json({ success: true, message: "Periode berhasil diperbarui" });
   } catch (error) { console.error("[API ERROR]", error.sqlMessage || error.message);
+    const dbCode = error?.code || "";
+    const dbMessage = String(error?.sqlMessage || error?.message || "");
+
+    if (dbCode === "ER_NO_REFERENCED_ROW_2" || dbCode === "ER_NO_REFERENCED_ROW" || /foreign key/i.test(dbMessage)) {
+      return res.status(400).json({
+        success: false,
+        message: "Data referensi tidak valid (misalnya DivisiId tidak ditemukan). Periksa kembali nilai yang dikirim."
+      });
+    }
+    if (dbCode === "ER_DUP_ENTRY") {
+      return res.status(409).json({ success: false, message: "Data periode duplikat (entri sudah ada)." });
+    }
+    if (dbCode === "ER_DATA_TOO_LONG" || dbCode === "ER_TRUNCATED_WRONG_VALUE" || dbCode === "WARN_DATA_TRUNCATED") {
+      return res.status(400).json({ success: false, message: "Format data yang dikirim tidak sesuai (misalnya tanggal/tahun tidak valid)." });
+    }
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }

@@ -110,6 +110,17 @@ app.use((err, _req, res, next) => {
   if (res.headersSent) {
     return next(err);
   }
+  const dbCode = err?.code || "";
+  const dbMessage = String(err?.sqlMessage || err?.message || "");
+  if (dbCode === "ER_NO_REFERENCED_ROW_2" || dbCode === "ER_NO_REFERENCED_ROW" || /foreign key/i.test(dbMessage)) {
+    return res.status(400).json({ success: false, message: "Data referensi tidak valid (misalnya relasi ke tabel lain tidak ditemukan)." });
+  }
+  if (dbCode === "ER_DUP_ENTRY") {
+    return res.status(409).json({ success: false, message: "Data duplikat (entri sudah ada)." });
+  }
+  if (["ER_DATA_TOO_LONG", "ER_TRUNCATED_WRONG_VALUE", "WARN_DATA_TRUNCATED", "ER_BAD_NULL_ERROR"].includes(dbCode)) {
+    return res.status(400).json({ success: false, message: "Format data yang dikirim tidak sesuai." });
+  }
   return res.status(500).json({
     success: false,
     message: "Internal Server Error"
