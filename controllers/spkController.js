@@ -324,6 +324,9 @@ async function createPeriodeHandler(req, res) {
 async function updatePeriodeHandler(req, res) {
   try {
     const periodeId = Number(req.params.id);
+    if (!isValidPositiveId(periodeId)) {
+      return res.status(400).json({ success: false, message: "ID periode tidak valid" });
+    }
     const existing = await getPeriodeById(periodeId);
     if (!existing) {
       return res.status(404).json({ success: false, message: "Periode tidak ditemukan" });
