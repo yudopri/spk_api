@@ -1534,6 +1534,8 @@ async function getMooraResultHandler(req, res) {
               email: employee.email,
               nik: decryptedNik,
               departemen_id: employee.departemen_id,
+              departemen: employee.department_name || null,
+              jabatan: employee.jabatan_name || null,
               lokasi_kerja: employee.lokasikerja || null
             }
           : null

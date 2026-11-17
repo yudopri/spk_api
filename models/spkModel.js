@@ -613,9 +613,12 @@ async function getEmployeesByIds(employeeIds) {
   if (!employeeIds.length) return [];
   const placeholders = employeeIds.map(() => "?").join(",");
   const rows = await queryMitra(
-    `SELECT id, name, email, nik_ktp, departemen_id, lokasikerja
-     FROM employees
-     WHERE id IN (${placeholders})`,
+    `SELECT e.id, e.name, e.email, e.nik_ktp, e.departemen_id, e.lokasikerja,
+            d.name AS department_name, j.name AS jabatan_name
+     FROM employees e
+     LEFT JOIN departemens d ON d.id = e.departemen_id
+     LEFT JOIN jabatans j ON j.id = e.jabatan_id
+     WHERE e.id IN (${placeholders})`,
     employeeIds
   );
   return rows.map((row) => ({
