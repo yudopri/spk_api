@@ -657,9 +657,9 @@ async function getDepartmentById(id) {
 }
 
 async function getEmployees({ deptId, lokasiKerja, ...options }) {
-  let baseSql = `SELECT e.id, e.name, e.email, e.nik_ktp, e.departemen_id, e.lokasikerja,
-                    d.name AS department_name, wl.id AS work_location_id,
-                    wl.name AS work_location_name, u.id AS user_id, u.role
+  let baseSql = `SELECT DISTINCT e.id, e.name, e.email, e.nik_ktp, e.departemen_id, e.lokasikerja,
+                     d.name AS department_name, wl.id AS work_location_id,
+                     wl.name AS work_location_name, u.id AS user_id, u.role
              FROM employees e
              LEFT JOIN users u ON u.email = e.email
              LEFT JOIN departemens d ON d.id = e.departemen_id
