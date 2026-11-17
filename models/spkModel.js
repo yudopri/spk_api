@@ -657,29 +657,35 @@ async function getDepartmentById(id) {
 }
 
 async function getEmployees({ deptId, lokasiKerja, ...options }) {
-  let baseSql = `SELECT DISTINCT e.id, e.name, e.email, e.nik_ktp, e.departemen_id, e.lokasikerja,
-                     d.name AS department_name, wl.id AS work_location_id,
-                     wl.name AS work_location_name, u.id AS user_id, u.role
-             FROM employees e
-             LEFT JOIN users u ON u.email = e.email
-             LEFT JOIN departemens d ON d.id = e.departemen_id
-             LEFT JOIN work_locations wl ON wl.name = e.lokasikerja`;
+  // DISTINCT tidak cukup bila join menghasilkan baris beda nilai (mis. beberapa
+  // users dengan email sama, atau work_locations dengan nama sama). Dedupe per
+  // employee id lewat derived table + GROUP BY.
+  let baseSql = `SELECT t.* FROM (
+                   SELECT e.id, e.name, e.email, e.nik_ktp, e.departemen_id, e.lokasikerja,
+                     d.name AS department_name, MAX(wl.id) AS work_location_id,
+                     MAX(wl.name) AS work_location_name, MIN(u.id) AS user_id, MIN(u.role) AS role
+              FROM employees e
+              LEFT JOIN users u ON u.email = e.email
+              LEFT JOIN departemens d ON d.id = e.departemen_id
+              LEFT JOIN work_locations wl ON wl.name = e.lokasikerja
+              GROUP BY e.id, e.name, e.email, e.nik_ktp, e.departemen_id, e.lokasikerja, d.name
+                 ) t`;
   const baseParams = [];
   let hasWhere = false;
   if (deptId) {
-    baseSql += " WHERE e.departemen_id = ?";
+    baseSql += " WHERE t.departemen_id = ?";
     baseParams.push(deptId);
     hasWhere = true;
   }
   if (lokasiKerja) {
-    baseSql += hasWhere ? " AND e.lokasikerja = ?" : " WHERE e.lokasikerja = ?";
+    baseSql += hasWhere ? " AND t.lokasikerja = ?" : " WHERE t.lokasikerja = ?";
     baseParams.push(lokasiKerja);
   }
 
   // nik_ktp sengaja tidak dimasukkan ke searchColumns karena terenkripsi (IV acak
   // per baris) sehingga tidak bisa dicocokkan dengan LIKE. Pencarian NIK dilakukan
   // in-memory di controller terhadap nilai yang sudah didekripsi.
-  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, baseParams, options, ["e.name", "e.email"]);
+  const { sql, params, countSql, countParams } = applyQueryMeta(baseSql, baseParams, options, ["t.name", "t.email"]);
   const [rows, totalRes] = await Promise.all([
     queryMitra(sql, params),
     queryMitra(countSql, countParams)
